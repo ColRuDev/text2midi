@@ -36,6 +36,7 @@ from huggingface_hub import hf_hub_download
 import pandas as pd
 import numpy as np
 from sklearn.decomposition import PCA
+from umap import UMAP
 import plotly.express as px
 import torch
 import torch.nn.functional as F
@@ -194,10 +195,10 @@ with torch.no_grad():
 encoder_embeddings_np = last_hidden_state.squeeze(0).detach().cpu().numpy()
 print(f"Shape of encoder_embeddings_np: {encoder_embeddings_np.shape}")
 
-# Inicializamos PCA con 2 componentes para visualización
-pca = PCA(n_components=2)
-pca_results = pca.fit_transform(encoder_embeddings_np)
-print(f"Shape of pca_results: {pca_results.shape}")
+# Inicializamos UMAP con 2 componentes para visualización
+reducer = UMAP(n_components=2, random_state=42, n_neighbors=15, min_dist=0.1)
+umap_results = reducer.fit_transform(encoder_embeddings_np)
+print(f"Shape of umap_results: {umap_results.shape}")
 
 # %%
 # 1. Preparar los datos filtrados
@@ -208,21 +209,21 @@ for i, token in enumerate(tokens):
     if token not in skip_tokens:
         filtered_data.append({
             'Token': token,
-            'PC1': pca_results[i, 0],
-            'PC2': pca_results[i, 1]
+            'UMAP1': umap_results[i, 0],
+            'UMAP2': umap_results[i, 1]
         })
 
-df_pca = pd.DataFrame(filtered_data)
+df_umap = pd.DataFrame(filtered_data)
 
 # 2. Crear la gráfica interactiva con Plotly
 fig = px.scatter(
-    df_pca,
-    x='PC1',
-    y='PC2',
+    df_umap,
+    x='UMAP1',
+    y='UMAP2',
     text='Token',
-    title='Exploración Interactiva de Embeddings (PCA)',
+    title='Exploración Interactiva de Embeddings (UMAP)',
     template='plotly_white',
-    hover_data={'PC1': ':.4f', 'PC2': ':.4f'}
+    hover_data={'UMAP2': ':.4f', 'UMAP2': ':.4f'}
 )
 
 # 3. Ajustar estilo de los puntos y etiquetas
@@ -236,8 +237,8 @@ fig.update_layout(
     dragmode='pan', # Permite arrastrar por defecto
     width=900,
     height=700,
-    xaxis_title="Componente Principal 1",
-    yaxis_title="Componente Principal 2"
+    xaxis_title="UMAP Dimensión 1",
+    yaxis_title="UMAP Dimensión 2"
 )
 
 fig.show()

@@ -56,7 +56,7 @@ Resulta importante determinar que modelos son adecuados para esta estrategia de 
 
 ## Referencias
 
-- [Composición de Text2Midi base] (outputs/evaluación-intencion/text2midi_base.mid)
-- [Composición de Text2Midi con formato midicaps] (outputs/evaluación-intencion/text2midi_midicaps_format.mid)
-- [Composición de MidiLLM base] (outputs/evaluación-intencion/midillm_base.mid)
-- [Composición de MidiLLM con formato midicaps] (outputs/evaluación-intencion/midillm_midicaps_format.mid)
+- [Composición de Text2Midi base](../outputs/evaluación-intencion/text2midi_base.mid)
+- [Composición de Text2Midi con formato midicaps](../outputs/evaluación-intencion/text2midi_midicaps_format.mid)
+- [Composición de MidiLLM base](./outputs/evaluación-intencion/midillm_base.mid)
+- [Composición de MidiLLM con formato midicaps](../outputs/evaluación-intencion/midillm_midicaps_format.mid)

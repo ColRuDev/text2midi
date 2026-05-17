@@ -28,6 +28,26 @@ class LLMTranslationError(Exception):
         super().__init__(message)
 
 
+class ConfigurationError(Exception):
+    """
+    Raised when a required configuration or dependency is missing.
+
+    This exception wraps configuration-related errors, providing
+    domain isolation and consistent error handling.
+
+    Attributes:
+        message: Human-readable error description.
+        __cause__: The original exception that triggered this error.
+
+    Example:
+        >>> if not shutil.which("fluidsynth"):
+        ...     raise ConfigurationError("fluidsynth executable not found")
+    """
+
+    def __init__(self, message: str):
+        super().__init__(message)
+
+
 class GeneratorError(Exception):
     """
     Raised when MIDI generation fails due to model or inference errors.

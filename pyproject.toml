@@ -12,6 +12,13 @@ dependencies = [
     "miditok>=3.0.0",
     "symusic>=0.1.0",
     "einops>=0.8.0",
+    "pretty-midi>=0.2.11",
+    "pyfluidsynth>=1.3.4",
+]
+
+[project.optional-dependencies]
+clap = [
+    "laion-clap>=1.0.0",
 ]
 
 [dependency-groups]

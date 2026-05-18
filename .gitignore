@@ -15,3 +15,8 @@ wheels/
 .env.*.local
 # Local Pi runtime state
 .atl/
+
+# Model weights
+# *.pth
+*.bin
+*.pkl

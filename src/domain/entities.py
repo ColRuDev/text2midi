@@ -65,9 +65,9 @@ class GenerationProfile:
     max_tokens: int = 2000
 
     # Reward weights
-    clap_weight: float = 1.0
-    key_weight: float = 2.5
-    note_weight: float = 2.5
+    clap_weight: float = 0.17
+    key_weight: float = 0.42
+    note_weight: float = 0.41
 
     def __post_init__(self) -> None:
         """Validate all parameters after initialization."""

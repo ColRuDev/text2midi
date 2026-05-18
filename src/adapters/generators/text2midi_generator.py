@@ -302,6 +302,28 @@ class Text2MidiGenerator(MidiGenerator):
                 import os
                 import tempfile
 
+                # Apply Monkey Patch for Miditok v3+ compatibility with v2.x vocab
+                if hasattr(self._midi_tokenizer, "config"):
+                    if not hasattr(self._midi_tokenizer.config, "additional_tokens"):
+                        self._midi_tokenizer.config.additional_tokens = []
+                    
+                    attrs_to_fix = {
+                        "use_velocities": True,
+                        "use_note_duration_programs": [],
+                        "use_programs": True,
+                        "use_chords": False,
+                        "use_rests": False,
+                        "use_tempos": True,
+                        "use_time_signatures": True,
+                        "use_sustain_pedals": False,
+                        "use_pitch_bends": False,
+                        "use_pitch_intervals": False,
+                        "program_changes": False,
+                        "default_note_duration": 0.5,
+                    }
+                    for attr, value in attrs_to_fix.items():
+                        setattr(self._midi_tokenizer.config, attr, value)
+
                 # Decode tokens to a miditok.Midi (or similar) object
                 midi_obj = self._midi_tokenizer.decode(tokens)
 

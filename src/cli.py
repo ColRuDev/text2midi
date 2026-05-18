@@ -21,6 +21,8 @@ import logging
 import sys
 from pathlib import Path
 
+from dotenv import load_dotenv
+
 from config.profiles import BALANCED, DEEP_SEARCH, ONE_SHOT, PROFILES
 from domain.entities import GenerationProfile
 from pipeline import Text2MidiPipeline
@@ -115,6 +117,9 @@ def main(argv: list[str] | None = None) -> int:
         >>> exit_code
         0
     """
+    # Load environment variables from .env file
+    load_dotenv()
+
     # Parse arguments
     args = parse_args(argv)
 

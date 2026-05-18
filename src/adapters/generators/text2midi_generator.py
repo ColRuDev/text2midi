@@ -53,9 +53,9 @@ class Text2MidiGeneratorConfig:
         >>> generator = Text2MidiGenerator(config)
     """
 
-    model_path: str = ""
+    model_path: str = "models/text2midi/pytorch_model.bin"
     text_tokenizer_path: str = "google/flan-t5-base"
-    midi_vocab_path: str = ""
+    midi_vocab_path: str = "models/text2midi/vocab_remi.pkl"
     device: str = "auto"
 
     def __post_init__(self) -> None:

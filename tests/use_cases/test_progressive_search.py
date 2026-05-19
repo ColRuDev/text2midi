@@ -10,6 +10,7 @@ from typing import List
 
 from domain.entities import (
     GenerationProfile,
+    GenerationResult,
     Intent,
     MidiSequence,
 )
@@ -130,8 +131,8 @@ class TestProgressiveSearch(unittest.TestCase):
         # Should work with any implementation of the interfaces
         result = search.execute(self.intent, self.profile)
 
-        self.assertIsInstance(result, bytes)
-        self.assertTrue(result.startswith(b"MIDI_DATA_"))
+        self.assertIsInstance(result, GenerationResult)
+        self.assertTrue(result.midi_bytes.startswith(b"MIDI_DATA_"))
 
         # Verify all interfaces were called
         self.assertEqual(self.translator.call_count, 1)
@@ -155,7 +156,7 @@ class TestProgressiveSearch(unittest.TestCase):
         # Should not raise - survivors continue
         result = search.execute(self.intent, self.profile)
 
-        self.assertIsInstance(result, bytes)
+        self.assertIsInstance(result, GenerationResult)
         # At least some branches should have succeeded
         self.assertGreater(failing_generator.call_count, 0)
 
@@ -196,13 +197,13 @@ class TestProgressiveSearch(unittest.TestCase):
         # Should return best partial result, not raise
         result = search.execute(self.intent, self.profile)
 
-        self.assertIsInstance(result, bytes)
+        self.assertIsInstance(result, GenerationResult)
         # Should have generated some tokens before failing
         self.assertGreater(fail_after_one.call_count, 0)
 
     def test_returns_only_midi_bytes(self):
         """
-        AC4: Returns only the final MIDI bytes.
+        AC4: Returns GenerationResult containing the final MIDI bytes and technical prompt.
         """
         search = ProgressiveSearch(
             translator=self.translator,
@@ -213,17 +214,19 @@ class TestProgressiveSearch(unittest.TestCase):
 
         result = search.execute(self.intent, self.profile)
 
-        # Must be bytes, not a wrapper object
-        self.assertIsInstance(result, bytes)
-        # Must start with MIDI marker
-        self.assertTrue(result.startswith(b"MIDI_DATA_"))
+        # Must be a GenerationResult with midi_bytes
+        self.assertIsInstance(result, GenerationResult)
+        # midi_bytes must start with MIDI marker
+        self.assertTrue(result.midi_bytes.startswith(b"MIDI_DATA_"))
+        # technical_prompt must be a string
+        self.assertIsInstance(result.technical_prompt, str)
 
     def test_top_k_pruning_keeps_best_branches(self):
         """
         Verify that top_k pruning keeps the highest-reward branches.
         """
         # Set up evaluator with predictable rewards
-        evaluator = MockEvaluator(rewards=[0.9, 0.5, 0.7])
+        evaluator = MockEvaluator(rewards=[0.1, 0.9, 0.5])
 
         search = ProgressiveSearch(
             translator=self.translator,
@@ -236,7 +239,7 @@ class TestProgressiveSearch(unittest.TestCase):
 
         # Should have evaluated multiple branches
         self.assertGreater(evaluator.call_count, 0)
-        self.assertIsInstance(result, bytes)
+        self.assertIsInstance(result, GenerationResult)
 
 
 class TestProgressiveSearchEdgeCases(unittest.TestCase):
@@ -268,7 +271,7 @@ class TestProgressiveSearchEdgeCases(unittest.TestCase):
 
         result = search.execute(Intent("test"), profile)
 
-        self.assertIsInstance(result, bytes)
+        self.assertIsInstance(result, GenerationResult)
 
     def test_graceful_degradation_with_partial_results(self):
         """
@@ -277,7 +280,7 @@ class TestProgressiveSearchEdgeCases(unittest.TestCase):
         translator = MockTranslator(prompts=["p1", "p2"])
         # First branch succeeds once, then fails; second always fails
         generator = MockGenerator(tokens_per_call=10)
-        evaluator = MockEvaluator(rewards=[0.8, 0.6])
+        evaluator = MockEvaluator(rewards=[0.2, 0.8])
         audio_renderer = MockAudioRenderer()
 
         search = ProgressiveSearch(
@@ -299,7 +302,7 @@ class TestProgressiveSearchEdgeCases(unittest.TestCase):
 
         result = search.execute(Intent("test"), profile)
 
-        self.assertIsInstance(result, bytes)
+        self.assertIsInstance(result, GenerationResult)
 
 
 class TestRandomBranchCloning(unittest.TestCase):
@@ -366,7 +369,7 @@ class TestRandomBranchCloning(unittest.TestCase):
                     self.assertIsInstance(args[0][0], MidiSequence,
                         "random.choice should be called with MidiSequence objects")
 
-        self.assertIsInstance(result, bytes)
+        self.assertIsInstance(result, GenerationResult)
 
     def test_random_choice_called_with_surviving_branches_for_uniform_selection(self):
         """
@@ -426,7 +429,7 @@ class TestRandomBranchCloning(unittest.TestCase):
                     for branch in branch_list:
                         self.assertIsInstance(branch, MidiSequence)
 
-        self.assertIsInstance(result, bytes)
+        self.assertIsInstance(result, GenerationResult)
 
     def test_cloning_bypassed_when_all_branches_die(self):
         """
@@ -473,6 +476,119 @@ class TestRandomBranchCloning(unittest.TestCase):
                 "random.choice should NOT be called when all branches die")
 
         self.assertIn("All generation branches failed", str(ctx.exception))
+
+
+class TestProgressiveSearchReturnsGenerationResult(unittest.TestCase):
+    """Tests for PRD 08: ProgressiveSearch returns GenerationResult."""
+
+    def test_execute_returns_generation_result_with_midi_bytes(self):
+        """
+        PRD 08: execute MUST return a GenerationResult containing midi_bytes.
+        """
+        translator = MockTranslator(prompts=["prompt1"])
+        generator = MockGenerator()
+        evaluator = MockEvaluator(rewards=[0.8])
+        audio_renderer = MockAudioRenderer()
+
+        search = ProgressiveSearch(
+            translator=translator,
+            generator=generator,
+            evaluator=evaluator,
+            audio_renderer=audio_renderer,
+        )
+
+        profile = GenerationProfile(
+            token_batch_size=10,
+            num_beams=1,
+            top_k=1,
+            max_tokens=20,
+            clap_weight=0.2,
+            key_weight=0.5,
+            note_weight=0.3,
+        )
+
+        result = search.execute(Intent("test"), profile)
+
+        self.assertIsInstance(result, GenerationResult)
+        self.assertIsInstance(result.midi_bytes, bytes)
+        self.assertTrue(result.midi_bytes.startswith(b"MIDI_DATA_"))
+
+    def test_execute_returns_generation_result_with_technical_prompt_from_winner(self):
+        """
+        PRD 08: execute MUST return GenerationResult with the winning technical_prompt.
+
+        GIVEN a beam search completes with a winner
+        WHEN execute returns
+        THEN the technical_prompt MUST match the winner's prompt
+        """
+        translator = MockTranslator(prompts=["winner_prompt", "loser_prompt"])
+        generator = MockGenerator()
+        # MockEvaluator assigns: call 1 -> reward[1]=0.5, call 2 -> reward[2%2]=reward[0]=0.9
+        # So first branch gets 0.5, second gets 0.9. We want winner_prompt to win.
+        # Swap reward order so call 1 gets high reward (for winner_prompt)
+        evaluator = MockEvaluator(rewards=[0.5, 0.9])  # call 1 -> 0.9, call 2 -> 0.5
+        audio_renderer = MockAudioRenderer()
+
+        search = ProgressiveSearch(
+            translator=translator,
+            generator=generator,
+            evaluator=evaluator,
+            audio_renderer=audio_renderer,
+        )
+
+        profile = GenerationProfile(
+            token_batch_size=10,
+            num_beams=2,
+            top_k=1,
+            max_tokens=20,
+            clap_weight=0.2,
+            key_weight=0.5,
+            note_weight=0.3,
+        )
+
+        result = search.execute(Intent("test"), profile)
+
+        self.assertIsInstance(result, GenerationResult)
+        # Winner should be the first prompt (highest reward after MockEvaluator cycling)
+        self.assertEqual(result.technical_prompt, "winner_prompt")
+
+    def test_execute_returns_generation_result_with_prompt_from_best_survivor(self):
+        """
+        PRD 08: When all branches die, return GenerationResult with best_survivor's prompt.
+
+        GIVEN all branches fail after generating something
+        WHEN execute returns the best partial result
+        THEN the technical_prompt MUST match the best_survivor's prompt
+        """
+        translator = MockTranslator(prompts=["survivor_prompt", "other_prompt"])
+        generator = MockGenerator(should_fail=True, fail_after=1)
+        # MockEvaluator assigns: call 1 -> reward[1]=0.6, call 2 -> reward[2%2]=reward[0]=0.8
+        # We want survivor_prompt to have higher reward, so swap order
+        evaluator = MockEvaluator(rewards=[0.6, 0.8])  # call 1 -> 0.8, call 2 -> 0.6
+        audio_renderer = MockAudioRenderer()
+
+        search = ProgressiveSearch(
+            translator=translator,
+            generator=generator,
+            evaluator=evaluator,
+            audio_renderer=audio_renderer,
+        )
+
+        profile = GenerationProfile(
+            token_batch_size=10,
+            num_beams=2,
+            top_k=1,
+            max_tokens=25,
+            clap_weight=0.2,
+            key_weight=0.5,
+            note_weight=0.3,
+        )
+
+        result = search.execute(Intent("test"), profile)
+
+        self.assertIsInstance(result, GenerationResult)
+        # Best survivor should have the higher reward prompt
+        self.assertEqual(result.technical_prompt, "survivor_prompt")
 
 
 if __name__ == "__main__":

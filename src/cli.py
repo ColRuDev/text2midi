@@ -24,7 +24,7 @@ from pathlib import Path
 from dotenv import load_dotenv
 
 from config.profiles import BALANCED, DEEP_SEARCH, ONE_SHOT, PROFILES
-from domain.entities import GenerationProfile
+from domain.entities import GenerationProfile, GenerationResult
 from pipeline import Text2MidiPipeline
 
 logger = logging.getLogger(__name__)
@@ -97,6 +97,12 @@ Examples:
         help="Enable verbose logging.",
     )
 
+    parser.add_argument(
+        "--print-prompt",
+        action="store_true",
+        help="Print the technical prompt to stdout after generation.",
+    )
+
     return parser.parse_args(args)
 
 
@@ -146,11 +152,20 @@ def main(argv: list[str] | None = None) -> int:
 
         # Generate MIDI
         logger.info(f"Generating MIDI for: '{args.text}'")
-        midi_bytes = pipeline.generate(text=args.text, profile=profile)
+        result: GenerationResult = pipeline.generate(text=args.text, profile=profile)
 
-        # Write to disk
+        # Write MIDI to disk
         logger.info(f"Writing MIDI to: {output_path}")
-        output_path.write_bytes(midi_bytes)
+        output_path.write_bytes(result.midi_bytes)
+
+        # Write technical prompt to .txt file (PRD 08)
+        txt_path = output_path.with_suffix(".txt")
+        logger.info(f"Writing technical prompt to: {txt_path}")
+        txt_path.write_text(result.technical_prompt)
+
+        # Print prompt to stdout if requested (PRD 08)
+        if args.print_prompt:
+            print(result.technical_prompt)
 
         print(f"Successfully generated MIDI: {output_path}")
         return 0

@@ -30,7 +30,7 @@ from adapters.translators.google_ai_translator import (
     GoogleAIConfig,
     GoogleAITranslator,
 )
-from domain.entities import GenerationProfile, Intent, MidiBytes
+from domain.entities import GenerationProfile, GenerationResult, Intent, MidiBytes
 from use_cases.progressive_search import ProgressiveSearch
 
 if TYPE_CHECKING:
@@ -124,7 +124,7 @@ class Text2MidiPipeline:
         self,
         text: str,
         profile: GenerationProfile,
-    ) -> MidiBytes:
+    ) -> GenerationResult:
         """
         Generate MIDI from natural language text.
 
@@ -136,7 +136,8 @@ class Text2MidiPipeline:
             profile: GenerationProfile controlling search and evaluation.
 
         Returns:
-            Raw MIDI file bytes ready to write to disk.
+            GenerationResult containing the MIDI bytes and technical prompt
+            of the best generated sequence.
 
         Raises:
             RuntimeError: If all generation branches fail.
@@ -145,8 +146,8 @@ class Text2MidiPipeline:
 
         Example:
             >>> from config.profiles import BALANCED
-            >>> midi = pipeline.generate("A peaceful sunrise", BALANCED)
-            >>> len(midi) > 0
+            >>> result = pipeline.generate("A peaceful sunrise", BALANCED)
+            >>> len(result.midi_bytes) > 0
             True
         """
         logger.info(f"Generating MIDI for: '{text[:50]}...' with profile {profile}")
@@ -155,7 +156,7 @@ class Text2MidiPipeline:
         intent = Intent(text=text)
 
         # Execute ProgressiveSearch
-        midi_bytes = self._search.execute(intent=intent, profile=profile)
+        result = self._search.execute(intent=intent, profile=profile)
 
-        logger.info(f"Generation complete: {len(midi_bytes)} bytes")
-        return midi_bytes
+        logger.info(f"Generation complete: {len(result.midi_bytes)} bytes")
+        return result

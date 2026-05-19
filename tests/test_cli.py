@@ -12,21 +12,25 @@ from io import StringIO
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
-from domain.entities import GenerationProfile
+from domain.entities import GenerationProfile, GenerationResult
 
 
 class MockPipeline:
     """Mock Text2MidiPipeline for testing."""
 
-    def __init__(self, midi_bytes: bytes = b"MOCK_MIDI_DATA"):
+    def __init__(self, midi_bytes: bytes = b"MOCK_MIDI_DATA", technical_prompt: str = "MOCK_PROMPT"):
         self.midi_bytes = midi_bytes
+        self.technical_prompt = technical_prompt
         self.last_text = None
         self.last_profile = None
 
-    def generate(self, text: str, profile: GenerationProfile) -> bytes:
+    def generate(self, text: str, profile: GenerationProfile) -> GenerationResult:
         self.last_text = text
         self.last_profile = profile
-        return self.midi_bytes
+        return GenerationResult(
+            midi_bytes=self.midi_bytes,
+            technical_prompt=self.technical_prompt,
+        )
 
 
 class TestCLIArgumentParsing(unittest.TestCase):
@@ -90,6 +94,26 @@ class TestCLIArgumentParsing(unittest.TestCase):
 
         self.assertEqual(args.output, "output.mid")
 
+    def test_parse_print_prompt_flag(self):
+        """
+        PRD 08: CLI must parse --print-prompt flag.
+        """
+        from cli import parse_args
+
+        args = parse_args(["--text", "test", "--print-prompt"])
+
+        self.assertTrue(args.print_prompt)
+
+    def test_print_prompt_defaults_to_false(self):
+        """
+        PRD 08: --print-prompt should default to False.
+        """
+        from cli import parse_args
+
+        args = parse_args(["--text", "test"])
+
+        self.assertFalse(args.print_prompt)
+
 
 class TestCLIExecution(unittest.TestCase):
     """Test suite for CLI execution flow."""
@@ -150,6 +174,77 @@ class TestCLIExecution(unittest.TestCase):
             # Verify file was written
             self.assertTrue(output_path.exists())
             self.assertEqual(output_path.read_bytes(), expected_midi)
+
+    def test_main_writes_technical_prompt_to_txt_file(self):
+        """
+        PRD 08: CLI must save technical prompt to .txt file with same base name.
+        """
+        with tempfile.TemporaryDirectory() as tmpdir:
+            output_path = Path(tmpdir) / "result.mid"
+            expected_prompt = "C major scale, piano, tempo 120 BPM"
+
+            mock_pipeline = MockPipeline(technical_prompt=expected_prompt)
+
+            with patch("cli.Text2MidiPipeline") as mock_pipeline_cls:
+                mock_pipeline_cls.return_value = mock_pipeline
+
+                from cli import main
+
+                main(["--text", "test", "--output", str(output_path)])
+
+            # Verify both files were written
+            self.assertTrue(output_path.exists())
+            txt_path = output_path.with_suffix(".txt")
+            self.assertTrue(txt_path.exists())
+            self.assertEqual(txt_path.read_text(), expected_prompt)
+
+    def test_main_prints_prompt_with_flag(self):
+        """
+        PRD 08: CLI must print technical prompt to stdout with --print-prompt.
+        """
+        with tempfile.TemporaryDirectory() as tmpdir:
+            output_path = Path(tmpdir) / "test.mid"
+            expected_prompt = "C major scale, piano, tempo 120 BPM"
+
+            mock_pipeline = MockPipeline(technical_prompt=expected_prompt)
+
+            with (
+                patch("cli.Text2MidiPipeline") as mock_pipeline_cls,
+                patch("sys.stdout", new_callable=StringIO) as mock_stdout,
+            ):
+                mock_pipeline_cls.return_value = mock_pipeline
+
+                from cli import main
+
+                main(["--text", "test", "--output", str(output_path), "--print-prompt"])
+
+            # Verify prompt was printed to stdout
+            output = mock_stdout.getvalue()
+            self.assertIn(expected_prompt, output)
+
+    def test_main_does_not_print_prompt_without_flag(self):
+        """
+        PRD 08: CLI must NOT print technical prompt without --print-prompt.
+        """
+        with tempfile.TemporaryDirectory() as tmpdir:
+            output_path = Path(tmpdir) / "test.mid"
+            expected_prompt = "C major scale, piano, tempo 120 BPM"
+
+            mock_pipeline = MockPipeline(technical_prompt=expected_prompt)
+
+            with (
+                patch("cli.Text2MidiPipeline") as mock_pipeline_cls,
+                patch("sys.stdout", new_callable=StringIO) as mock_stdout,
+            ):
+                mock_pipeline_cls.return_value = mock_pipeline
+
+                from cli import main
+
+                main(["--text", "test", "--output", str(output_path)])
+
+            # Verify prompt was NOT printed to stdout
+            output = mock_stdout.getvalue()
+            self.assertNotIn(expected_prompt, output)
 
     def test_main_with_default_output_path(self):
         """

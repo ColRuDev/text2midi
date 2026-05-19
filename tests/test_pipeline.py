@@ -10,6 +10,7 @@ from unittest.mock import MagicMock, patch
 
 from domain.entities import (
     GenerationProfile,
+    GenerationResult,
     Intent,
     MidiSequence,
 )
@@ -170,9 +171,9 @@ class TestText2MidiPipelineGenerate(unittest.TestCase):
         self.assertTrue(hasattr(pipeline, "generate"))
         self.assertTrue(callable(pipeline.generate))
 
-    def test_generate_returns_midi_bytes(self):
+    def test_generate_returns_generation_result(self):
         """
-        AC2.3: generate must return MIDI bytes.
+        PRD 08: generate must return a GenerationResult.
         """
         from config.profiles import BALANCED
 
@@ -180,8 +181,22 @@ class TestText2MidiPipelineGenerate(unittest.TestCase):
 
         result = pipeline.generate("A peaceful sunrise", BALANCED)
 
-        self.assertIsInstance(result, bytes)
-        self.assertTrue(result.startswith(b"MIDI_DATA_"))
+        self.assertIsInstance(result, GenerationResult)
+        self.assertTrue(result.midi_bytes.startswith(b"MIDI_DATA_"))
+        self.assertIsInstance(result.technical_prompt, str)
+
+    def test_generate_returns_midi_bytes_in_result(self):
+        """
+        PRD 08: generate must return GenerationResult with valid midi_bytes.
+        """
+        from config.profiles import BALANCED
+
+        pipeline = self._create_pipeline()
+
+        result = pipeline.generate("A peaceful sunrise", BALANCED)
+
+        self.assertIsInstance(result.midi_bytes, bytes)
+        self.assertTrue(result.midi_bytes.startswith(b"MIDI_DATA_"))
 
     def test_generate_uses_progressive_search(self):
         """
@@ -208,7 +223,7 @@ class TestText2MidiPipelineGenerate(unittest.TestCase):
 
         result = pipeline.generate("Quick melody", ONE_SHOT)
 
-        self.assertIsInstance(result, bytes)
+        self.assertIsInstance(result, GenerationResult)
 
     def test_generate_with_deep_search_profile(self):
         """
@@ -231,7 +246,7 @@ class TestText2MidiPipelineGenerate(unittest.TestCase):
 
         result = pipeline.generate("Complex symphony", small_deep)
 
-        self.assertIsInstance(result, bytes)
+        self.assertIsInstance(result, GenerationResult)
 
 
 class TestText2MidiPipelineReuse(unittest.TestCase):
@@ -268,12 +283,14 @@ class TestText2MidiPipelineReuse(unittest.TestCase):
             )
 
             # First call
-            pipeline.generate("First melody", profile)
+            result1 = pipeline.generate("First melody", profile)
+            self.assertIsInstance(result1, GenerationResult)
             first_translator_count = mock_translator.call_count
             first_generator_count = mock_generator.call_count
 
             # Second call - should reuse same instances
-            pipeline.generate("Second melody", profile)
+            result2 = pipeline.generate("Second melody", profile)
+            self.assertIsInstance(result2, GenerationResult)
 
             # Translator should have been called twice (once per generate)
             self.assertEqual(mock_translator.call_count, first_translator_count + 1)

@@ -15,6 +15,7 @@ from typing import List
 
 from domain.entities import (
     GenerationProfile,
+    GenerationResult,
     Intent,
     MidiSequence,
 )
@@ -79,7 +80,7 @@ class ProgressiveSearch:
         self,
         intent: Intent,
         profile: GenerationProfile,
-    ) -> MidiBytes:
+    ) -> GenerationResult:
         """
         Execute the progressive search algorithm.
 
@@ -88,7 +89,8 @@ class ProgressiveSearch:
             profile: Configuration for search and evaluation parameters.
 
         Returns:
-            Raw MIDI file bytes of the best generated sequence.
+            GenerationResult containing the MIDI bytes and technical prompt
+            of the best generated sequence.
 
         Raises:
             RuntimeError: If all branches fail before any successful generation.
@@ -169,7 +171,10 @@ class ProgressiveSearch:
             logger.warning(
                 "All branches failed, returning best surviving partial result"
             )
-            return self.generator.decode_to_midi(best_survivor.tokens)
+            return GenerationResult(
+                midi_bytes=self.generator.decode_to_midi(best_survivor.tokens),
+                technical_prompt=best_survivor.technical_prompt,
+            )
 
         if not branches:
             raise RuntimeError(
@@ -186,7 +191,10 @@ class ProgressiveSearch:
             f"reward={winner.reward:.3f}"
         )
 
-        return self.generator.decode_to_midi(winner.tokens)
+        return GenerationResult(
+            midi_bytes=self.generator.decode_to_midi(winner.tokens),
+            technical_prompt=winner.technical_prompt,
+        )
 
     def _expand_branch(
         self,

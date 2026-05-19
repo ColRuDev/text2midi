@@ -160,8 +160,12 @@ def main(argv: list[str] | None = None) -> int:
 
         # Write technical prompt to .txt file (PRD 08)
         txt_path = output_path.with_suffix(".txt")
+        if txt_path == output_path:
+            # Prevent overwriting MIDI if user explicitly passed a .txt extension for output
+            txt_path = output_path.with_name(f"{output_path.stem}_prompt.txt")
+            
         logger.info(f"Writing technical prompt to: {txt_path}")
-        txt_path.write_text(result.technical_prompt)
+        txt_path.write_text(result.technical_prompt, encoding="utf-8")
 
         # Print prompt to stdout if requested (PRD 08)
         if args.print_prompt:

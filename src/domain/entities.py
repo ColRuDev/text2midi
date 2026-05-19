@@ -63,6 +63,7 @@ class GenerationProfile:
     num_beams: int = 5
     top_k: int = 2
     max_tokens: int = 2000
+    random_seed: int | None = None
 
     # Reward weights
     clap_weight: float = 0.17

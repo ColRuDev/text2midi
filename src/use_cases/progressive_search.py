@@ -107,6 +107,9 @@ class ProgressiveSearch:
         # Track the best surviving sequence for graceful degradation
         best_survivor: MidiSequence | None = None
         tokens_generated = 0
+        
+        # Initialize RNG once for consistent sampling across all iterations
+        rng = random.Random(profile.random_seed) if profile.random_seed is not None else random
 
         logger.info(
             f"Starting beam search with {len(branches)} branches, "
@@ -148,8 +151,10 @@ class ProgressiveSearch:
 
             # Step 4b: Replenish branches with clones of survivors (PRD 07)
             # Use uniform random selection from surviving branches
+            # Sample from original survivors to avoid bias from mutated list
+            survivors = list(branches)
             while len(branches) < profile.num_beams:
-                clone_source = random.choice(branches)
+                clone_source = rng.choice(survivors)
                 branches.append(clone_source.copy())
 
             tokens_generated += profile.token_batch_size

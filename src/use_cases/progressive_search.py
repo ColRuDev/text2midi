@@ -9,6 +9,7 @@ interfaces and has no knowledge of implementation details.
 from __future__ import annotations
 
 import logging
+import random
 from dataclasses import dataclass
 from typing import List
 
@@ -144,6 +145,12 @@ class ProgressiveSearch:
             # Step 4: Prune to top_k
             alive_branches.sort(reverse=True)  # Sort by reward (highest first)
             branches = alive_branches[: profile.top_k]
+
+            # Step 4b: Replenish branches with clones of survivors (PRD 07)
+            # Use uniform random selection from surviving branches
+            while len(branches) < profile.num_beams:
+                clone_source = random.choice(branches)
+                branches.append(clone_source.copy())
 
             tokens_generated += profile.token_batch_size
 

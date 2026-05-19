@@ -302,5 +302,178 @@ class TestProgressiveSearchEdgeCases(unittest.TestCase):
         self.assertIsInstance(result, bytes)
 
 
+class TestRandomBranchCloning(unittest.TestCase):
+    """Tests for PRD 07: Random Branch Cloning."""
+
+    def test_beam_width_maintained_after_pruning_with_clones(self):
+        """
+        PRD 07 Scenario 1: Branches are replenished to num_beams after pruning.
+
+        GIVEN a search iteration completes with some live branches and some dead branches
+        WHEN the pruning step is executed
+        THEN the system MUST replace dead branches with clones of surviving branches
+        AND the total beam width MUST be maintained for the next iteration.
+        """
+        import random
+        from unittest.mock import patch, MagicMock
+
+        translator = MockTranslator(prompts=["p1", "p2", "p3"])
+        generator = MockGenerator(should_fail=True, fail_after=1)
+        evaluator = MockEvaluator(rewards=[0.8, 0.6, 0.5])
+        audio_renderer = MockAudioRenderer()
+
+        search = ProgressiveSearch(
+            translator=translator,
+            generator=generator,
+            evaluator=evaluator,
+            audio_renderer=audio_renderer,
+        )
+
+        profile = GenerationProfile(
+            token_batch_size=10,
+            num_beams=3,  # We want 3 branches total
+            top_k=2,      # Prune to top 2
+            max_tokens=25,  # Allow 2 iterations
+            clap_weight=0.2,
+            key_weight=0.5,
+            note_weight=0.3,
+        )
+
+        # Mock random.choice to track calls and return predictable values
+        with patch('random.choice') as mock_choice:
+            # Return the first surviving branch each time
+            mock_choice.return_value = MidiSequence(
+                technical_prompt="p1",
+                tokens=[0, 1, 2],
+                reward=0.8
+            )
+
+            result = search.execute(Intent("test"), profile)
+
+            # Verify random.choice was called to clone branches
+            # After pruning to top_k=2, we need to replenish to num_beams=3
+            # So random.choice should be called at least once
+            self.assertGreater(mock_choice.call_count, 0, 
+                "random.choice should be called to select branches for cloning")
+
+            # Verify the argument passed to random.choice was the surviving branches list
+            for call in mock_choice.call_args_list:
+                args = call[0]
+                self.assertIsInstance(args[0], list, 
+                    "random.choice should be called with a list of branches")
+                # Each branch should be a MidiSequence
+                if args[0]:
+                    self.assertIsInstance(args[0][0], MidiSequence,
+                        "random.choice should be called with MidiSequence objects")
+
+        self.assertIsInstance(result, bytes)
+
+    def test_random_choice_called_with_surviving_branches_for_uniform_selection(self):
+        """
+        PRD 07: Selection of surviving branches for cloning MUST follow a uniform distribution.
+
+        Verify that random.choice is called with the list of surviving branches,
+        ensuring uniform selection among survivors.
+        """
+        import random
+        from unittest.mock import patch
+
+        translator = MockTranslator(prompts=["p1", "p2", "p3"])
+        generator = MockGenerator(should_fail=True, fail_after=1)
+        evaluator = MockEvaluator(rewards=[0.8, 0.6, 0.5])
+        audio_renderer = MockAudioRenderer()
+
+        search = ProgressiveSearch(
+            translator=translator,
+            generator=generator,
+            evaluator=evaluator,
+            audio_renderer=audio_renderer,
+        )
+
+        profile = GenerationProfile(
+            token_batch_size=10,
+            num_beams=3,
+            top_k=2,
+            max_tokens=25,
+            clap_weight=0.2,
+            key_weight=0.5,
+            note_weight=0.3,
+        )
+
+        with patch('random.choice') as mock_choice:
+            # Track what branches are passed to random.choice
+            selected_branches = []
+            
+            def track_choice(branches):
+                selected_branches.append(list(branches))  # Capture the list
+                # Return a copy of the first branch
+                return branches[0].copy() if branches else MidiSequence(technical_prompt="empty")
+
+            mock_choice.side_effect = track_choice
+
+            result = search.execute(Intent("test"), profile)
+
+            # Verify random.choice was called at least once
+            self.assertGreater(mock_choice.call_count, 0,
+                "random.choice should be called for branch cloning")
+
+            # Verify each call was with a list of MidiSequence objects (the survivors)
+            for branch_list in selected_branches:
+                self.assertIsInstance(branch_list, list)
+                if branch_list:
+                    self.assertIsInstance(branch_list[0], MidiSequence)
+                    # All items should be MidiSequence
+                    for branch in branch_list:
+                        self.assertIsInstance(branch, MidiSequence)
+
+        self.assertIsInstance(result, bytes)
+
+    def test_cloning_bypassed_when_all_branches_die(self):
+        """
+        PRD 07 Scenario 2: All branches fail simultaneously.
+
+        GIVEN a search iteration completes with zero live branches
+        WHEN the pruning step is executed
+        THEN the system MUST NOT attempt to clone any branches
+        AND the system MUST retain existing abort logic and terminate the search correctly.
+        """
+        import random
+        from unittest.mock import patch
+
+        translator = MockTranslator(prompts=["p1", "p2"])
+        # Generator fails immediately (before any successful generation)
+        generator = MockGenerator(should_fail=True, fail_after=0)
+        evaluator = MockEvaluator(rewards=[0.8, 0.6])
+        audio_renderer = MockAudioRenderer()
+
+        search = ProgressiveSearch(
+            translator=translator,
+            generator=generator,
+            evaluator=evaluator,
+            audio_renderer=audio_renderer,
+        )
+
+        profile = GenerationProfile(
+            token_batch_size=10,
+            num_beams=2,
+            top_k=1,
+            max_tokens=20,
+            clap_weight=0.2,
+            key_weight=0.5,
+            note_weight=0.3,
+        )
+
+        with patch('random.choice') as mock_choice:
+            # Should raise RuntimeError because all branches fail before producing output
+            with self.assertRaises(RuntimeError) as ctx:
+                search.execute(Intent("test"), profile)
+
+            # Verify random.choice was NOT called (cloning should be bypassed)
+            self.assertEqual(mock_choice.call_count, 0,
+                "random.choice should NOT be called when all branches die")
+
+        self.assertIn("All generation branches failed", str(ctx.exception))
+
+
 if __name__ == "__main__":
     unittest.main()

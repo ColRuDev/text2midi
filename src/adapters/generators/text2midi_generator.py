@@ -57,6 +57,7 @@ class Text2MidiGeneratorConfig:
     text_tokenizer_path: str = "google/flan-t5-base"
     midi_vocab_path: str = "models/text2midi/vocab_remi.pkl"
     device: str = "auto"
+    temperature: float = 0.5
 
     def __post_init__(self) -> None:
         """Validate configuration after initialization."""
@@ -258,12 +259,14 @@ class Text2MidiGenerator(MidiGenerator):
             attention_mask = inputs["attention_mask"].to(self._device)
 
             with torch.no_grad():
-                # If we have current tokens, pass them as tensor, else None
-                tgt_fin = (
-                    torch.tensor(current_tokens, dtype=torch.long, device=self._device)
-                    if current_tokens
-                    else None
-                )
+                # For continuation, we must prepend the BOS token (1) to the current sequence
+                # so the transformer recognizes the start of the sequence context.
+                if current_tokens:
+                    # Token ID 1 is BOS_None in vocab_remi.pkl
+                    context_tokens = [1] + current_tokens
+                    tgt_fin = torch.tensor(context_tokens, dtype=torch.long, device=self._device)
+                else:
+                    tgt_fin = None
 
                 # Delegate the progressive generation loop and sampling math
                 # directly to the vendored model implementation
@@ -271,7 +274,7 @@ class Text2MidiGenerator(MidiGenerator):
                     src=input_ids,
                     src_mask=attention_mask,
                     max_len=num_tokens,
-                    temperature=0.9,
+                    temperature=self._config.temperature,
                     tgt_fin=tgt_fin,
                 )
 

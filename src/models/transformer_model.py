@@ -549,11 +549,11 @@ class Transformer(Module):
             # Token ID 1 is used in legacy code when starting fresh
             tgt_fin = torch.full((src.size(0), 1), 1, dtype=torch.long, device=src.device)
         else:
-            # When continuing, legacy code prepends 0
+            # When continuing, we must prepend BOS token (1) to maintain context
             if isinstance(tgt_fin, list):
-                tgt_fin = [0] + tgt_fin
+                tgt_fin = [1] + tgt_fin
             else:
-                tgt_fin = [0] + tgt_fin.tolist()
+                tgt_fin = [1] + tgt_fin.tolist()
             value_tensor = torch.tensor(tgt_fin, dtype=torch.long, device=src.device)
             tgt_fin = value_tensor.unsqueeze(0).repeat(src.size(0), 1)
 

@@ -12,8 +12,9 @@ from adapters.evaluators.clap_evaluator import ClapEvaluator
 from adapters.evaluators.composite import CompositeEvaluator
 from domain.entities import GenerationProfile, Intent, MidiSequence
 from domain.interfaces import AudioSamples
-from domain.remi_vocab import INVERTED_VOCAB
 from use_cases.token_heuristics import TokenHeuristics
+
+DUMMY_VOCAB = {60: "Pitch_60", 64: "Pitch_64", 67: "Pitch_67", 72: "Pitch_72"}
 
 
 class TestClapEvaluator:
@@ -22,12 +23,12 @@ class TestClapEvaluator:
     @pytest.fixture
     def mock_clap_module(self):
         """Mock the CLAP module."""
-        with patch("adapters.evaluators.clap_evaluator.clap") as mock:
+        with patch("adapters.evaluators.clap_evaluator.laion_clap") as mock:
             # Setup CLAP class mock
             mock_clap_instance = MagicMock()
-            mock.CLAP.return_value = mock_clap_instance
-            mock_clap_instance.get_audio_embeddings.return_value = MagicMock()
-            mock_clap_instance.get_text_embeddings.return_value = MagicMock()
+            mock.CLAP_Module.return_value = mock_clap_instance
+            mock_clap_instance.get_audio_embedding_from_data.return_value = MagicMock()
+            mock_clap_instance.get_text_embedding.return_value = MagicMock()
             mock_clap_instance.compute_similarity.return_value = MagicMock(
                 cpu=lambda: MagicMock(item=lambda: 0.75)
             )
@@ -75,8 +76,8 @@ class TestClapEvaluator:
         evaluator.evaluate(sample_sequence, sample_audio, sample_intent)
         
         # Verify text embeddings were requested
-        mock_clap_instance = mock_clap_module.CLAP.return_value
-        mock_clap_instance.get_text_embeddings.assert_called()
+        mock_clap_instance = mock_clap_module.CLAP_Module.return_value
+        mock_clap_instance.get_text_embedding.assert_called()
 
     def test_clap_evaluator_can_use_original_intent(
         self, mock_clap_module, mock_clap_available, sample_sequence, sample_audio, sample_intent
@@ -87,12 +88,12 @@ class TestClapEvaluator:
         evaluator.evaluate(sample_sequence, sample_audio, sample_intent)
         
         # Verify text embeddings were requested
-        mock_clap_instance = mock_clap_module.CLAP.return_value
-        mock_clap_instance.get_text_embeddings.assert_called()
+        mock_clap_instance = mock_clap_module.CLAP_Module.return_value
+        mock_clap_instance.get_text_embedding.assert_called()
 
     def test_clap_evaluator_handles_missing_model_gracefully(self, sample_sequence, sample_audio, sample_intent):
         """ClapEvaluator handles missing CLAP model gracefully."""
-        with patch("adapters.evaluators.clap_evaluator.clap", None):
+        with patch("adapters.evaluators.clap_evaluator.laion_clap", None):
             evaluator = ClapEvaluator()
             score = evaluator.evaluate(sample_sequence, sample_audio, sample_intent)
             
@@ -126,7 +127,7 @@ class TestTokenHeuristicsAsAdapter:
         self, sample_sequence, sample_audio, sample_intent
     ):
         """TokenHeuristics returns a float score."""
-        evaluator = TokenHeuristics(vocab_mapping=INVERTED_VOCAB)
+        evaluator = TokenHeuristics(vocab_mapping=DUMMY_VOCAB)
         score = evaluator.evaluate(sample_sequence, sample_audio, sample_intent)
         
         assert isinstance(score, float)
@@ -140,7 +141,7 @@ class TestTokenHeuristicsAsAdapter:
             tokens=[],
         )
         
-        evaluator = TokenHeuristics(vocab_mapping=INVERTED_VOCAB)
+        evaluator = TokenHeuristics(vocab_mapping=DUMMY_VOCAB)
         score = evaluator.evaluate(sequence, sample_audio, sample_intent)
         
         # Should return low score for empty sequence
@@ -253,14 +254,16 @@ class TestCompositeEvaluator:
             sample_sequence, sample_audio, sample_intent
         )
 
+    @patch("adapters.evaluators.composite.get_inverted_vocab")
     def test_composite_evaluator_auto_creates_token_heuristics(
-        self, sample_sequence, sample_audio, sample_intent
+        self, mock_get_vocab, sample_sequence, sample_audio, sample_intent
     ):
         """
         CompositeEvaluator auto-creates TokenHeuristics when heuristics_evaluator is None.
         
         PRD 09: TokenHeuristics is the new default heuristics evaluator.
         """
+        mock_get_vocab.return_value = DUMMY_VOCAB
         profile = GenerationProfile(
             clap_weight=0.5,
             key_weight=0.25,

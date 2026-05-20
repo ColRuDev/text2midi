@@ -49,11 +49,13 @@ class TokenHeuristics(Evaluator):
         vocab_mapping: Dict mapping TokenId (int) -> EventName (str).
         strict_instruments: When True, penalize unrequested instruments.
         requested_programs: Set of requested MIDI program numbers (0-127, -1 for drums).
+        key_weight: Weight for key consistency score.
+        note_weight: Weight for time signature/instrument consistency scores.
         clap_prompt_source: Inherited from Evaluator interface.
 
     Example:
-        >>> from domain.remi_vocab import INVERTED_VOCAB
-        >>> evaluator = TokenHeuristics(vocab_mapping=INVERTED_VOCAB)
+        >>> from domain.remi_vocab import get_inverted_vocab
+        >>> evaluator = TokenHeuristics(vocab_mapping=get_inverted_vocab())
         >>> score = evaluator.evaluate(sequence, audio_data, intent)
     """
 
@@ -62,6 +64,8 @@ class TokenHeuristics(Evaluator):
         vocab_mapping: dict[int, str],
         strict_instruments: bool = False,
         requested_programs: Optional[Set[int]] = None,
+        key_weight: float = 0.5,
+        note_weight: float = 0.5,
     ) -> None:
         """
         Initialize TokenHeuristics with vocabulary and configuration.
@@ -70,10 +74,14 @@ class TokenHeuristics(Evaluator):
             vocab_mapping: Inverted vocabulary mapping TokenId -> EventName.
             strict_instruments: Whether to penalize unrequested instruments.
             requested_programs: Set of requested MIDI program numbers.
+            key_weight: Weight for key consistency score (default 0.5).
+            note_weight: Weight for time signature/instrument scores (default 0.5).
         """
         self._vocab_mapping = vocab_mapping
         self._strict_instruments = strict_instruments
         self._requested_programs = requested_programs or set()
+        self._key_weight = key_weight
+        self._note_weight = note_weight
         self.clap_prompt_source: str = ClapPromptSource.TECHNICAL
 
     def evaluate(
@@ -108,28 +116,37 @@ class TokenHeuristics(Evaluator):
         key_info = self._parse_key_from_prompt(sequence.technical_prompt)
         requested_timesig = self._parse_timesig_from_prompt(sequence.technical_prompt)
 
-        # Update requested programs from prompt if not already set
-        if not self._requested_programs:
+        # Resolve requested programs: use instance-level if set, otherwise parse from prompt
+        requested_programs = self._requested_programs
+        if not requested_programs:
             parsed_programs = self._parse_programs_from_prompt(sequence.technical_prompt)
             if parsed_programs:
-                self._requested_programs = parsed_programs
+                requested_programs = parsed_programs
 
         # Compute individual scores
         key_score = self._compute_key_consistency(tokens, key_info)
         timesig_score = self._compute_timesig_consistency(tokens, requested_timesig)
-        instrument_score = self._compute_instrument_consistency(tokens)
+        instrument_score = self._compute_instrument_consistency(tokens, requested_programs)
 
-        # Combine scores with weights
-        # Key is most important, then time signature, then instruments
+        # Combine scores with injected weights from GenerationProfile
+        # note_weight is split between timesig and instrument scores
+        total_weight = self._key_weight + self._note_weight
+        if total_weight == 0:
+            return 0.5  # Neutral score if no weights
+
+        # Split note_weight evenly between timesig and instrument
+        timesig_portion = self._note_weight / 2
+        instrument_portion = self._note_weight / 2
+
         combined_score = (
-            key_score * 0.5 +
-            timesig_score * 0.3 +
-            instrument_score * 0.2
-        )
+            key_score * self._key_weight +
+            timesig_score * timesig_portion +
+            instrument_score * instrument_portion
+        ) / total_weight
 
         return combined_score
 
-    def _parse_key_from_prompt(self, prompt: str) -> dict:
+    def _parse_key_from_prompt(self, prompt: str) -> Optional[dict]:
         """
         Parse key information from technical prompt.
 
@@ -137,26 +154,31 @@ class TokenHeuristics(Evaluator):
             prompt: Technical prompt string (e.g., "tempo:80 key:C_major ...").
 
         Returns:
-            Dict with 'root' (0-11) and 'scale' ('major' or 'minor').
+            Dict with 'root' (0-11) and 'scale' ('major' or 'minor'), or None
+            if no key was specified in the prompt.
         """
-        result = {"root": 0, "scale": "major"}
-
         prompt_lower = prompt.lower()
 
-        # Check for minor
-        if "minor" in prompt_lower:
-            result["scale"] = "minor"
-        else:
-            result["scale"] = "major"
-
-        # Try to extract root note from key:X pattern
-        key_match = re.search(r"key:([a-g][#b]?)", prompt_lower)
+        # Try to extract root note and scale together from key:X_scale pattern
+        # This avoids false matches like "key: C_major. Add minor chords"
+        key_match = re.search(r"key:\s*([a-g][#b]?)[_ -](major|minor)", prompt_lower)
         if key_match:
             note_name = key_match.group(1)
-            if note_name in NOTE_NAMES:
-                result["root"] = NOTE_NAMES[note_name]
+            scale = key_match.group(2)
+            if note_name not in NOTE_NAMES:
+                return None  # Invalid key name
+            return {"root": NOTE_NAMES[note_name], "scale": scale}
 
-        return result
+        # Fall back to just root note (default to major scale)
+        key_match = re.search(r"key:\s*([a-g][#b]?)", prompt_lower)
+        if not key_match:
+            return None  # No key specified
+
+        note_name = key_match.group(1)
+        if note_name not in NOTE_NAMES:
+            return None  # Invalid key name
+
+        return {"root": NOTE_NAMES[note_name], "scale": "major"}
 
     def _parse_timesig_from_prompt(self, prompt: str) -> Optional[str]:
         """
@@ -171,7 +193,7 @@ class TokenHeuristics(Evaluator):
         prompt_lower = prompt.lower()
 
         # Look for timesig:X/Y pattern
-        timesig_match = re.search(r"timesig:(\d+/\d+)", prompt_lower)
+        timesig_match = re.search(r"timesig:\s*(\d+/\d+)", prompt_lower)
         if timesig_match:
             return timesig_match.group(1)
 
@@ -192,7 +214,10 @@ class TokenHeuristics(Evaluator):
         prompt_lower = prompt.lower()
 
         # Look for instruments:X pattern
-        instruments_match = re.search(r"instruments:([a-z0-9_,]+)", prompt_lower)
+        # Use lookahead to stop before next key (e.g., "tempo:") or end of string
+        instruments_match = re.search(
+            r"instruments:\s*([a-z0-9_, ]+?)(?=\s+[a-z]+:|$)", prompt_lower
+        )
         if instruments_match:
             instruments_str = instruments_match.group(1)
             # Parse instrument names
@@ -203,17 +228,22 @@ class TokenHeuristics(Evaluator):
 
         return programs
 
-    def _compute_key_consistency(self, tokens: list[int], key_info: dict) -> float:
+    def _compute_key_consistency(self, tokens: list[int], key_info: Optional[dict]) -> float:
         """
         Compute how well pitch tokens fit the specified key.
 
         Args:
             tokens: List of TokenIds.
-            key_info: Dict with 'root' and 'scale'.
+            key_info: Dict with 'root' and 'scale', or None if no key specified.
 
         Returns:
             Score in [0, 1] based on percentage of in-key pitch tokens.
+            Returns 0.5 (neutral) if no key was specified.
         """
+        # Neutral score if no key constraint was specified
+        if key_info is None:
+            return 0.5
+
         root = key_info["root"]
         scale = key_info["scale"]
 
@@ -288,7 +318,9 @@ class TokenHeuristics(Evaluator):
         # Apply exponential penalty for mismatch
         return 0.3
 
-    def _compute_instrument_consistency(self, tokens: list[int]) -> float:
+    def _compute_instrument_consistency(
+        self, tokens: list[int], requested_programs: Set[int]
+    ) -> float:
         """
         Compute instrument consistency score.
 
@@ -297,6 +329,7 @@ class TokenHeuristics(Evaluator):
 
         Args:
             tokens: List of TokenIds.
+            requested_programs: Set of requested MIDI program numbers.
 
         Returns:
             Score in [0, 1].
@@ -321,11 +354,11 @@ class TokenHeuristics(Evaluator):
             return 0.5
 
         # If no requested programs specified, return neutral score
-        if not self._requested_programs:
+        if not requested_programs:
             return 0.5
 
         # Check if all found programs are in requested set
-        unrequested = found_programs - self._requested_programs
+        unrequested = found_programs - requested_programs
 
         if not unrequested:
             return 1.0  # All instruments match

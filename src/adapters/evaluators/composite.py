@@ -16,7 +16,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Optional, Protocol
 
 from domain.entities import ClapPromptSource, GenerationProfile
-from domain.remi_vocab import INVERTED_VOCAB
+from domain.remi_vocab import get_inverted_vocab
 from use_cases.token_heuristics import TokenHeuristics
 
 if TYPE_CHECKING:
@@ -66,14 +66,10 @@ class CompositeEvaluator:
         self._clap_evaluator = clap_evaluator
         self._profile = profile or GenerationProfile()
         
-        # Create TokenHeuristics with vocabulary mapping if not provided
-        if heuristics_evaluator is None:
-            self._heuristics_evaluator = TokenHeuristics(
-                vocab_mapping=INVERTED_VOCAB,
-                strict_instruments=self._profile.strict_instruments,
-            )
-        else:
-            self._heuristics_evaluator = heuristics_evaluator
+        # Store heuristics evaluator (may be None for lazy initialization)
+        self._heuristics_evaluator = heuristics_evaluator
+        # Track if we need to auto-create TokenHeuristics
+        self._heuristics_needs_init = heuristics_evaluator is None
     
     def set_clap_prompt_source(self, source: str) -> None:
         """
@@ -94,8 +90,10 @@ class CompositeEvaluator:
             )
         self.clap_prompt_source = source
         
-        # Propagate to CLAP evaluator
-        if self._clap_evaluator is not None:
+        # Propagate to CLAP evaluator (only if method exists)
+        if self._clap_evaluator is not None and hasattr(
+            self._clap_evaluator, "set_clap_prompt_source"
+        ):
             self._clap_evaluator.set_clap_prompt_source(source)
     
     def evaluate(
@@ -119,6 +117,17 @@ class CompositeEvaluator:
             A float score in [0, 1] range. Returns 0.0 if no evaluators
             are available.
         """
+        # Lazy-initialize TokenHeuristics on first use (avoids RuntimeError
+        # if vocabulary is not yet loaded at module import time)
+        if self._heuristics_needs_init and self._heuristics_evaluator is None:
+            self._heuristics_evaluator = TokenHeuristics(
+                vocab_mapping=get_inverted_vocab(),
+                strict_instruments=self._profile.strict_instruments,
+                key_weight=self._profile.key_weight,
+                note_weight=self._profile.note_weight,
+            )
+            self._heuristics_needs_init = False
+        
         clap_score = 0.0
         heuristics_score = 0.0
         
@@ -136,12 +145,16 @@ class CompositeEvaluator:
         if self._clap_evaluator is None and self._heuristics_evaluator is None:
             return 0.0
         
-        # Get weights from profile
-        clap_weight = self._profile.clap_weight
+        # Get weights from profile, but only include weights for instantiated evaluators
+        clap_weight = self._profile.clap_weight if self._clap_evaluator is not None else 0.0
         # Heuristics weight combines key_weight and note_weight
-        heuristics_weight = self._profile.key_weight + self._profile.note_weight
+        heuristics_weight = (
+            self._profile.key_weight + self._profile.note_weight
+            if self._heuristics_evaluator is not None
+            else 0.0
+        )
         
-        # Normalize weights
+        # Normalize weights (only considering available evaluators)
         total_weight = clap_weight + heuristics_weight
         if total_weight == 0:
             return 0.0

@@ -5,9 +5,9 @@ This module provides an independent inverted REMI vocabulary mapping
 that maps TokenId (int) -> EventName (str) for fast token-level evaluation.
 
 Architecture:
-    - Pure domain module (no external dependencies beyond pickle for loading)
-    - Provides inverted vocabulary for heuristics evaluation
-    - Loads from the canonical REMI vocabulary file at initialization
+    - Pure domain module (no I/O, no external dependencies)
+    - Vocabulary mapping is injected from adapter layer
+    - Provides helper functions for token classification
 
 The inverted vocabulary enables TokenHeuristics to parse tokens in memory
 without disk I/O, dramatically improving evaluation speed during beam search.
@@ -15,40 +15,43 @@ without disk I/O, dramatically improving evaluation speed during beam search.
 
 from __future__ import annotations
 
-import pickle
-from pathlib import Path
 from typing import Optional
 
-# Default path to the REMI vocabulary file
-_DEFAULT_VOCAB_PATH = Path(__file__).parent.parent.parent / "models" / "text2midi" / "vocab_remi.pkl"
+
+# Module-level vocabulary (set by adapter layer via set_inverted_vocab)
+_INVERTED_VOCAB: Optional[dict[int, str]] = None
 
 
-def _load_inverted_vocab(vocab_path: Path = _DEFAULT_VOCAB_PATH) -> dict[int, str]:
+def set_inverted_vocab(vocab: dict[int, str]) -> None:
     """
-    Load and invert the REMI vocabulary from the pickle file.
+    Set the inverted vocabulary mapping from the adapter layer.
+
+    This MUST be called during application initialization before any
+    token heuristics evaluation. The adapter layer is responsible for
+    loading the vocabulary from disk.
 
     Args:
-        vocab_path: Path to the REMI vocabulary pickle file.
+        vocab: Dict mapping TokenId (int) -> EventName (str).
+    """
+    global _INVERTED_VOCAB
+    _INVERTED_VOCAB = vocab
+
+
+def get_inverted_vocab() -> dict[int, str]:
+    """
+    Get the inverted vocabulary mapping.
 
     Returns:
-        A dict mapping TokenId (int) -> EventName (str).
+        Dict mapping TokenId (int) -> EventName (str).
+
+    Raises:
+        RuntimeError: If vocabulary has not been initialized via set_inverted_vocab.
     """
-    if not vocab_path.exists():
-        raise FileNotFoundError(f"REMI vocabulary file not found: {vocab_path}")
-
-    with open(vocab_path, "rb") as f:
-        remi_tokenizer = pickle.load(f)
-
-    # The REMI tokenizer object has a .vocab attribute that is a dict
-    # mapping EventName -> TokenId. We need to invert it.
-    vocab = remi_tokenizer.vocab
-
-    # Invert: TokenId -> EventName
-    return {token_id: event_name for event_name, token_id in vocab.items()}
-
-
-# Load the inverted vocabulary at module initialization
-INVERTED_VOCAB: dict[int, str] = _load_inverted_vocab()
+    if _INVERTED_VOCAB is None:
+        raise RuntimeError(
+            "REMI vocabulary not initialized. Call set_inverted_vocab() from adapter layer."
+        )
+    return _INVERTED_VOCAB
 
 # Special token identifiers (tokens that don't represent musical events)
 SPECIAL_TOKENS: set[str] = {
@@ -70,7 +73,7 @@ def get_event_name(token_id: int) -> Optional[str]:
     Returns:
         The event name string, or None if the token ID is not in the vocabulary.
     """
-    return INVERTED_VOCAB.get(token_id)
+    return get_inverted_vocab().get(token_id)
 
 
 def is_pitch_token(token_id: int) -> bool:
@@ -83,7 +86,7 @@ def is_pitch_token(token_id: int) -> bool:
     Returns:
         True if the token is a Pitch_X event, False otherwise.
     """
-    event_name = INVERTED_VOCAB.get(token_id)
+    event_name = get_inverted_vocab().get(token_id)
     return event_name is not None and event_name.startswith("Pitch_")
 
 
@@ -97,7 +100,7 @@ def is_program_token(token_id: int) -> bool:
     Returns:
         True if the token is a Program_X event, False otherwise.
     """
-    event_name = INVERTED_VOCAB.get(token_id)
+    event_name = get_inverted_vocab().get(token_id)
     return event_name is not None and event_name.startswith("Program_")
 
 
@@ -111,7 +114,7 @@ def is_timesig_token(token_id: int) -> bool:
     Returns:
         True if the token is a TimeSig_X/Y event, False otherwise.
     """
-    event_name = INVERTED_VOCAB.get(token_id)
+    event_name = get_inverted_vocab().get(token_id)
     return event_name is not None and event_name.startswith("TimeSig_")
 
 
@@ -125,5 +128,5 @@ def is_special_token(token_id: int) -> bool:
     Returns:
         True if the token is a special token (PAD, BOS, EOS, etc.), False otherwise.
     """
-    event_name = INVERTED_VOCAB.get(token_id)
+    event_name = get_inverted_vocab().get(token_id)
     return event_name is not None and event_name in SPECIAL_TOKENS

@@ -23,10 +23,10 @@ if TYPE_CHECKING:
 
 # Try to import CLAP, handle gracefully if not available
 try:
-    import clap  # type: ignore
+    import laion_clap  # type: ignore
     CLAP_AVAILABLE = True
 except ImportError:
-    clap = None  # type: ignore
+    laion_clap = None  # type: ignore
     CLAP_AVAILABLE = False
 
 
@@ -65,10 +65,11 @@ class ClapEvaluator:
         self._model = None
         self._model_path = model_path
         
-        if CLAP_AVAILABLE and clap is not None:
+        if CLAP_AVAILABLE and laion_clap is not None:
             try:
                 # Load CLAP model (using default if no path provided)
-                self._model = clap.CLAP()
+                self._model = laion_clap.CLAP_Module(enable_fusion=False)
+                self._model.load_ckpt()
             except Exception:
                 # Model loading failed, will use fallback
                 pass
@@ -131,22 +132,46 @@ class ClapEvaluator:
             return 0.5
         
         try:
+            import numpy as np
+            import torch
+            import torch.nn.functional as F
+            
             # Get the text prompt for evaluation
             text_prompt = self.get_clap_prompt(sequence, intent)
             
-            # Get audio and text embeddings
-            # Note: Actual CLAP API may differ - this is a conceptual implementation
-            audio_embedding = self._model.get_audio_embeddings(audio_data)
-            text_embedding = self._model.get_text_embeddings([text_prompt])
+            # Convert raw float32 PCM bytes to numpy array
+            audio_array = np.frombuffer(audio_data, dtype=np.float32)
             
-            # Compute similarity
-            similarity = self._model.compute_similarity(audio_embedding, text_embedding)
+            # If audio is empty or too short, return 0.5
+            if len(audio_array) == 0:
+                return 0.5
+                
+            # Need to reshape audio for CLAP: (batch_size, num_samples)
+            # CLAP expects 48kHz audio by default
+            # Add an extra dimension: (1, num_samples)
+            if hasattr(np, 'expand_dims'):
+                audio_array = np.expand_dims(audio_array, axis=0)
+            else:
+                audio_array = np.array([audio_array])
+                
+            # Convert to torch tensor
+            audio_tensor = torch.from_numpy(audio_array)
             
-            # Normalize to [0, 1] range (CLAP similarity can be in [-1, 1])
+            # Get audio and text embeddings using the actual laion-clap API
+            # use_tensor=True to get PyTorch tensors back for easy cosine similarity
+            audio_embedding = self._model.get_audio_embedding_from_data(x=audio_tensor, use_tensor=True)
+            text_embedding = self._model.get_text_embedding([text_prompt], use_tensor=True)
+            
+            # Compute cosine similarity
+            similarity = F.cosine_similarity(audio_embedding, text_embedding, dim=1)
+            
+            # Normalize to [0, 1] range (cosine similarity is in [-1, 1])
             score = (similarity.cpu().item() + 1.0) / 2.0
             
             return max(0.0, min(1.0, score))
             
-        except Exception:
+        except Exception as e:
             # Evaluation failed, return fallback
+            import logging
+            logging.getLogger(__name__).warning(f"CLAP evaluation failed: {e}")
             return 0.5

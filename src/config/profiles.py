@@ -25,6 +25,7 @@ ONE_SHOT = GenerationProfile(
     clap_weight=0.3,
     key_weight=0.35,
     note_weight=0.35,
+    strict_instruments=False,
 )
 
 # BALANCED: Default profile with moderate exploration
@@ -37,6 +38,7 @@ BALANCED = GenerationProfile(
     clap_weight=0.4,
     key_weight=0.3,
     note_weight=0.3,
+    strict_instruments=False,
 )
 
 # DEEP_SEARCH: Maximum quality with extensive exploration
@@ -49,6 +51,7 @@ DEEP_SEARCH = GenerationProfile(
     clap_weight=0.5,
     key_weight=0.25,
     note_weight=0.25,
+    strict_instruments=False,
 )
 
 # Dictionary mapping profile names to profile instances

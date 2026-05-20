@@ -1,13 +1,13 @@
 """
 Composite Evaluator - Orchestrates multiple evaluators with weighted scoring.
 
-This adapter combines ClapEvaluator and HeuristicsEvaluator using weights
+This adapter combines ClapEvaluator and TokenHeuristics using weights
 from GenerationProfile to produce a unified evaluation score.
 
 Architecture:
     - Implements domain.interfaces.Evaluator
     - Uses GenerationProfile weights for score combination
-    - Delegates to ClapEvaluator and HeuristicsEvaluator
+    - Delegates to ClapEvaluator and TokenHeuristics
     - Provides fallback behavior when evaluators are unavailable
 """
 
@@ -16,6 +16,8 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Optional, Protocol
 
 from domain.entities import ClapPromptSource, GenerationProfile
+from domain.remi_vocab import INVERTED_VOCAB
+from use_cases.token_heuristics import TokenHeuristics
 
 if TYPE_CHECKING:
     from domain.entities import Intent, MidiSequence
@@ -31,7 +33,7 @@ class CompositeEvaluator:
     
     The adapter:
     - Delegates audio-text evaluation to ClapEvaluator
-    - Delegates music theory evaluation to HeuristicsEvaluator
+    - Delegates music theory evaluation to TokenHeuristics (memory-based)
     - Combines scores using weights from GenerationProfile
     - Handles missing evaluators gracefully
     
@@ -40,7 +42,7 @@ class CompositeEvaluator:
     
     Example:
         >>> profile = GenerationProfile(clap_weight=0.6, key_weight=0.2, note_weight=0.2)
-        >>> evaluator = CompositeEvaluator(clap, heuristics, profile)
+        >>> evaluator = CompositeEvaluator(clap, None, profile)  # TokenHeuristics auto-created
         >>> score = evaluator.evaluate(sequence, audio, intent)
     """
     
@@ -58,11 +60,20 @@ class CompositeEvaluator:
         Args:
             clap_evaluator: Evaluator for audio-text similarity.
             heuristics_evaluator: Evaluator for music theory analysis.
-            profile: GenerationProfile containing weights.
+                If None, TokenHeuristics is created automatically.
+            profile: GenerationProfile containing weights and strict_instruments toggle.
         """
         self._clap_evaluator = clap_evaluator
-        self._heuristics_evaluator = heuristics_evaluator
         self._profile = profile or GenerationProfile()
+        
+        # Create TokenHeuristics with vocabulary mapping if not provided
+        if heuristics_evaluator is None:
+            self._heuristics_evaluator = TokenHeuristics(
+                vocab_mapping=INVERTED_VOCAB,
+                strict_instruments=self._profile.strict_instruments,
+            )
+        else:
+            self._heuristics_evaluator = heuristics_evaluator
     
     def set_clap_prompt_source(self, source: str) -> None:
         """

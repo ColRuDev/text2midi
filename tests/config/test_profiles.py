@@ -1,7 +1,8 @@
 """
 Tests for configuration profiles.
 
-Tests validate that predefined profiles exist and can be loaded.
+Tests validate that predefined profiles exist and can be loaded,
+and that PRD 09 strict_instruments is properly configured.
 """
 
 import unittest
@@ -51,6 +52,34 @@ class TestPredefinedProfiles(unittest.TestCase):
         from config.profiles import BALANCED, DEEP_SEARCH
 
         self.assertGreater(DEEP_SEARCH.max_tokens, BALANCED.max_tokens)
+
+
+class TestProfilesStrictInstruments(unittest.TestCase):
+    """Test suite for strict_instruments in predefined profiles (PRD 09)."""
+
+    def test_one_shot_has_strict_instruments_false(self):
+        """
+        PRD 09: ONE_SHOT profile must have strict_instruments=False by default.
+        """
+        from config.profiles import ONE_SHOT
+
+        self.assertFalse(ONE_SHOT.strict_instruments)
+
+    def test_balanced_has_strict_instruments_false(self):
+        """
+        PRD 09: BALANCED profile must have strict_instruments=False by default.
+        """
+        from config.profiles import BALANCED
+
+        self.assertFalse(BALANCED.strict_instruments)
+
+    def test_deep_search_has_strict_instruments_false(self):
+        """
+        PRD 09: DEEP_SEARCH profile must have strict_instruments=False by default.
+        """
+        from config.profiles import DEEP_SEARCH
+
+        self.assertFalse(DEEP_SEARCH.strict_instruments)
 
 
 class TestProfilesDictionary(unittest.TestCase):

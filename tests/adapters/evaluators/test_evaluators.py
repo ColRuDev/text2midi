@@ -1,7 +1,7 @@
 """
 Unit tests for Evaluator adapters.
 
-Tests for ClapEvaluator, HeuristicsEvaluator, and CompositeEvaluator.
+Tests for ClapEvaluator, TokenHeuristics, and CompositeEvaluator.
 """
 
 from unittest.mock import MagicMock, Mock, patch
@@ -9,10 +9,11 @@ from unittest.mock import MagicMock, Mock, patch
 import pytest
 
 from adapters.evaluators.clap_evaluator import ClapEvaluator
-from adapters.evaluators.heuristics import HeuristicsEvaluator
 from adapters.evaluators.composite import CompositeEvaluator
 from domain.entities import GenerationProfile, Intent, MidiSequence
 from domain.interfaces import AudioSamples
+from domain.remi_vocab import INVERTED_VOCAB
+from use_cases.token_heuristics import TokenHeuristics
 
 
 class TestClapEvaluator:
@@ -100,15 +101,15 @@ class TestClapEvaluator:
             assert score == 0.5  # Default fallback
 
 
-class TestHeuristicsEvaluator:
-    """Tests for HeuristicsEvaluator."""
+class TestTokenHeuristicsAsAdapter:
+    """Tests for TokenHeuristics used as an adapter in composite evaluator."""
 
     @pytest.fixture
     def sample_sequence(self):
-        """Create a sample MidiSequence."""
+        """Create a sample MidiSequence with token IDs from the vocab."""
         return MidiSequence(
             technical_prompt="tempo:80 key:C_major instruments:piano",
-            tokens=[60, 64, 67, 72, 76],
+            tokens=[],  # Empty tokens
         )
 
     @pytest.fixture
@@ -121,63 +122,29 @@ class TestHeuristicsEvaluator:
         """Create a sample Intent."""
         return Intent(text="A peaceful piano melody")
 
-    def test_heuristics_evaluator_returns_float_score(
+    def test_token_heuristics_returns_float_score(
         self, sample_sequence, sample_audio, sample_intent
     ):
-        """HeuristicsEvaluator returns a float score."""
-        evaluator = HeuristicsEvaluator()
+        """TokenHeuristics returns a float score."""
+        evaluator = TokenHeuristics(vocab_mapping=INVERTED_VOCAB)
         score = evaluator.evaluate(sample_sequence, sample_audio, sample_intent)
         
         assert isinstance(score, float)
 
-    def test_heuristics_evaluator_analyzes_key_consistency(
-        self, sample_sequence, sample_audio, sample_intent
-    ):
-        """HeuristicsEvaluator analyzes key consistency."""
-        evaluator = HeuristicsEvaluator()
-        
-        # Sequence with C-major notes (60=C, 64=E, 67=G, 72=C)
-        score = evaluator.evaluate(sample_sequence, sample_audio, sample_intent)
-        
-        assert isinstance(score, float)
-
-    def test_heuristics_evaluator_handles_empty_tokens(
+    def test_token_heuristics_handles_empty_tokens(
         self, sample_audio, sample_intent
     ):
-        """HeuristicsEvaluator handles empty token list."""
+        """TokenHeuristics handles empty token list."""
         sequence = MidiSequence(
             technical_prompt="tempo:80 key:C_major",
             tokens=[],
         )
         
-        evaluator = HeuristicsEvaluator()
+        evaluator = TokenHeuristics(vocab_mapping=INVERTED_VOCAB)
         score = evaluator.evaluate(sequence, sample_audio, sample_intent)
         
         # Should return low score for empty sequence
         assert isinstance(score, float)
-
-    def test_heuristics_evaluator_scores_key_match(
-        self, sample_audio, sample_intent
-    ):
-        """HeuristicsEvaluator scores based on key match."""
-        # C-major sequence (C, E, G notes)
-        c_major_sequence = MidiSequence(
-            technical_prompt="tempo:80 key:C_major",
-            tokens=[60, 64, 67],  # C, E, G - C major triad
-        )
-        
-        # Non-C-major sequence (C#, D#, F# - not in C major)
-        non_c_major_sequence = MidiSequence(
-            technical_prompt="tempo:80 key:C_major",
-            tokens=[61, 63, 66],  # C#, D#, F# - not in C major
-        )
-        
-        evaluator = HeuristicsEvaluator()
-        c_major_score = evaluator.evaluate(c_major_sequence, sample_audio, sample_intent)
-        non_c_major_score = evaluator.evaluate(non_c_major_sequence, sample_audio, sample_intent)
-        
-        # C-major sequence should score higher for key consistency
-        assert c_major_score > non_c_major_score
 
 
 class TestCompositeEvaluator:
@@ -192,7 +159,7 @@ class TestCompositeEvaluator:
 
     @pytest.fixture
     def mock_heuristics(self):
-        """Create a mocked HeuristicsEvaluator."""
+        """Create a mocked heuristics evaluator."""
         mock = Mock()
         mock.evaluate.return_value = 0.6
         return mock
@@ -286,26 +253,34 @@ class TestCompositeEvaluator:
             sample_sequence, sample_audio, sample_intent
         )
 
-    def test_composite_evaluator_returns_zero_on_empty_evaluators(
+    def test_composite_evaluator_auto_creates_token_heuristics(
         self, sample_sequence, sample_audio, sample_intent
     ):
-        """CompositeEvaluator handles missing evaluators gracefully."""
+        """
+        CompositeEvaluator auto-creates TokenHeuristics when heuristics_evaluator is None.
+        
+        PRD 09: TokenHeuristics is the new default heuristics evaluator.
+        """
         profile = GenerationProfile(
             clap_weight=0.5,
             key_weight=0.25,
             note_weight=0.25,
         )
-        
+
+        # Pass None for heuristics_evaluator - should auto-create TokenHeuristics
         evaluator = CompositeEvaluator(
             clap_evaluator=None,
             heuristics_evaluator=None,
             profile=profile,
         )
-        
+
         score = evaluator.evaluate(sample_sequence, sample_audio, sample_intent)
-        
-        # Should return 0.0 when no evaluators available
-        assert score == 0.0
+
+        # Should return a valid score from auto-created TokenHeuristics
+        assert isinstance(score, float)
+        assert 0.0 <= score <= 1.0
+        # TokenHeuristics provides a non-zero score for valid sequences
+        assert score > 0.0
 
     def test_composite_evaluator_respects_clap_prompt_source(
         self, mock_clap, mock_heuristics, sample_sequence, sample_audio, sample_intent

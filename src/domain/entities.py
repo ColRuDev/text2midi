@@ -72,6 +72,9 @@ class GenerationProfile:
         clap_weight: Weight for CLAP-based audio-text similarity reward.
         key_weight: Weight for music theory key consistency reward.
         note_weight: Weight for note distribution/plausibility reward.
+        strict_instruments: When True, severely penalize branches containing
+            instruments not in the requested prompt. Defaults to False for
+            graceful fallback when model generates unexpected instruments.
 
     Raises:
         ValueError: If any parameter is invalid (negative, zero, or weights don't sum to ~1.0).
@@ -88,6 +91,9 @@ class GenerationProfile:
     clap_weight: float = 0.17
     key_weight: float = 0.42
     note_weight: float = 0.41
+
+    # Heuristics toggles
+    strict_instruments: bool = False
 
     def __post_init__(self) -> None:
         """Validate all parameters after initialization."""

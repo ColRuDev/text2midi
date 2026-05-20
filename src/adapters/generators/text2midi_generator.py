@@ -117,6 +117,11 @@ class Text2MidiGenerator(MidiGenerator):
             if isinstance(self._midi_vocab, dict)
             else {}
         )
+        
+        # Inject vocabulary mapping into the domain layer for heuristics evaluation
+        from domain.remi_vocab import set_inverted_vocab
+        set_inverted_vocab(self._inv_midi_vocab)
+        
         self._model = self._load_model()
 
     def _resolve_device(self) -> torch.device:

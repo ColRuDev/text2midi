@@ -299,6 +299,18 @@ class TestTokenHeuristicsParsing:
         assert key_info["root"] == 9  # A = 9
         assert key_info["scale"] == "minor"
 
+    def test_parse_key_from_natural_language_prompt(self, sample_vocab):
+        """
+        TokenHeuristics must parse key from natural language prompt.
+        """
+        from use_cases.token_heuristics import TokenHeuristics
+
+        evaluator = TokenHeuristics(vocab_mapping=sample_vocab)
+
+        key_info = evaluator._parse_key_from_prompt("The song is in the key of C Major with a 4/4 time signature")
+        assert key_info["root"] == 0
+        assert key_info["scale"] == "major"
+
     def test_parse_instruments_from_prompt(self, sample_vocab):
         """
         TokenHeuristics must parse instruments from technical prompt.
@@ -311,6 +323,18 @@ class TestTokenHeuristicsParsing:
         # Piano = 0, Guitar = 24 in General MIDI
         assert 0 in programs or "piano" in programs
 
+    def test_parse_instruments_from_natural_language_prompt(self, sample_vocab):
+        """
+        TokenHeuristics must parse instruments from natural language prompt.
+        """
+        from use_cases.token_heuristics import TokenHeuristics
+
+        evaluator = TokenHeuristics(vocab_mapping=sample_vocab)
+
+        programs = evaluator._parse_programs_from_prompt("featuring a soft acoustic grand piano and strings")
+        assert 0 in programs  # acoustic piano
+        assert 48 in programs  # strings
+
     def test_parse_timesig_from_prompt(self, sample_vocab):
         """
         TokenHeuristics must parse time signature from technical prompt.
@@ -321,3 +345,14 @@ class TestTokenHeuristicsParsing:
 
         timesig = evaluator._parse_timesig_from_prompt("tempo:80 timesig:4/4")
         assert timesig == "4/4"
+
+    def test_parse_timesig_from_natural_language_prompt(self, sample_vocab):
+        """
+        TokenHeuristics must parse time signature from natural language prompt.
+        """
+        from use_cases.token_heuristics import TokenHeuristics
+
+        evaluator = TokenHeuristics(vocab_mapping=sample_vocab)
+
+        timesig = evaluator._parse_timesig_from_prompt("with a 3/4 time signature and a slow tempo")
+        assert timesig == "3/4"

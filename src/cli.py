@@ -103,6 +103,12 @@ Examples:
         help="Print the technical prompt to stdout after generation.",
     )
 
+    parser.add_argument(
+        "--strict-instruments",
+        action="store_true",
+        help="Enable strict instrument checking (penalize unrequested instruments).",
+    )
+
     return parser.parse_args(args)
 
 
@@ -137,11 +143,17 @@ def main(argv: list[str] | None = None) -> int:
     )
 
     # Resolve profile
-    profile = PROFILE_MAP.get(args.profile)
-    if profile is None:
+    # Get profile via factory function to avoid mutating the global default
+    from config.profiles import get_profile
+    try:
+        profile = get_profile(args.profile)
+    except KeyError:
         logger.error(f"Invalid profile: {args.profile}")
-        print(f"Error: Invalid profile '{args.profile}'. Choose from: {list(PROFILE_MAP.keys())}", file=sys.stderr)
+        print(f"Error: Invalid profile '{args.profile}'.", file=sys.stderr)
         return 1
+
+    if args.strict_instruments:
+        profile.strict_instruments = True
 
     output_path = Path(args.output)
 

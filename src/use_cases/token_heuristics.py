@@ -151,7 +151,7 @@ class TokenHeuristics(Evaluator):
         Parse key information from technical prompt.
 
         Args:
-            prompt: Technical prompt string (e.g., "tempo:80 key:C_major ...").
+            prompt: Technical prompt string (e.g., "tempo:80 key:C_major ..." or natural language).
 
         Returns:
             Dict with 'root' (0-11) and 'scale' ('major' or 'minor'), or None
@@ -159,8 +159,15 @@ class TokenHeuristics(Evaluator):
         """
         prompt_lower = prompt.lower()
 
-        # Try to extract root note and scale together from key:X_scale pattern
-        # This avoids false matches like "key: C_major. Add minor chords"
+        # Try to match natural language format "key of C major"
+        key_match = re.search(r"key of\s+([a-g][#b]?)\s+(major|minor)", prompt_lower)
+        if key_match:
+            note_name = key_match.group(1)
+            scale = key_match.group(2)
+            if note_name in NOTE_NAMES:
+                return {"root": NOTE_NAMES[note_name], "scale": scale}
+
+        # Try to extract root note and scale together from strict key:X_scale pattern
         key_match = re.search(r"key:\s*([a-g][#b]?)[_ -](major|minor)", prompt_lower)
         if key_match:
             note_name = key_match.group(1)
@@ -192,8 +199,8 @@ class TokenHeuristics(Evaluator):
         """
         prompt_lower = prompt.lower()
 
-        # Look for timesig:X/Y pattern
-        timesig_match = re.search(r"timesig:\s*(\d+/\d+)", prompt_lower)
+        # Look for natural language fractions (e.g., "4/4 time signature") or strict tags
+        timesig_match = re.search(r"\b(\d+/\d+)\b", prompt_lower)
         if timesig_match:
             return timesig_match.group(1)
 
@@ -213,7 +220,15 @@ class TokenHeuristics(Evaluator):
 
         prompt_lower = prompt.lower()
 
-        # Look for instruments:X pattern
+        # Natural language extraction: check if instrument names exist in the prompt
+        # We replace underscores with spaces in INSTRUMENT_TO_PROGRAM keys
+        for inst_key, program in INSTRUMENT_TO_PROGRAM.items():
+            search_str = inst_key.replace("_", " ")
+            # Use word boundaries to avoid matching "bass" inside "bassoon"
+            if re.search(r"\b" + re.escape(search_str) + r"\b", prompt_lower):
+                programs.add(program)
+
+        # Fallback to strict instruments:X pattern
         # Use lookahead to stop before next key (e.g., "tempo:") or end of string
         instruments_match = re.search(
             r"instruments:\s*([a-z0-9_, ]+?)(?=\s+[a-z]+:|$)", prompt_lower

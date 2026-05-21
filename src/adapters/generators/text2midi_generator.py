@@ -19,7 +19,7 @@ from __future__ import annotations
 import pickle
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, List
+from typing import Any, List, Set
 
 import torch
 from transformers import T5Tokenizer  # type: ignore
@@ -28,6 +28,55 @@ from adapters.exceptions import GeneratorError
 from domain.entities import MidiBytes, PromptText, TokenId
 from domain.interfaces import MidiGenerator
 from models.transformer_model import Transformer
+
+# Allowed types for safe pickle loading (MIDI tokenizer objects)
+# Includes builtin types and numpy types needed for miditok v2/v3 compatibility
+_SAFE_PICKLE_TYPES: Set[str] = {
+    # miditok tokenizer classes
+    "miditok.MIDITokenizer",
+    "miditok.tokenizations.REMI.REMI",
+    "miditok.tokenizations.TSD.TSD",
+    "miditok.tokenizations.MIDIPlus.MIDIPlus",
+    # builtin types needed for pickle reconstruction
+    "builtins.int",
+    "builtins.dict",
+    "builtins.list",
+    "builtins.tuple",
+    "builtins.set",
+    "builtins.str",
+    "builtins.float",
+    "builtins.bool",
+    "builtins.NoneType",
+    # numpy types needed for miditok v2/v3 vocabularies
+    "numpy.ndarray",
+    "numpy.core.multiarray._reconstruct",
+    "numpy.core.multiarray.scalar",
+    "numpy.dtype",
+    "numpy.core._dtype_ctypes",
+    "miditok.tokenizations.remi.REMI",
+    "miditok.classes.TokenizerConfig",
+}
+
+
+class RestrictedUnpickler(pickle.Unpickler):
+    """
+    Secure unpickler that validates types DURING deserialization.
+
+    Prevents RCE attacks by rejecting any object that is not in the
+    allowed types list. The check happens BEFORE the object is instantiated,
+    not after loading when malicious code may have already executed.
+    """
+
+    def find_class(self, module: str, name: str) -> Any:
+        """Validate that the requested class is in the allowed list."""
+        full_name = f"{module}.{name}"
+        # Check if this is an allowed type using exact match
+        if full_name in _SAFE_PICKLE_TYPES:
+            return super().find_class(module, name)
+        raise GeneratorError(
+            f"Unsafe pickle class: {full_name}. "
+            f"Expected one of: {_SAFE_PICKLE_TYPES}"
+        )
 
 
 @dataclass
@@ -53,7 +102,7 @@ class Text2MidiGeneratorConfig:
         >>> generator = Text2MidiGenerator(config)
     """
 
-    model_path: str = "models/text2midi/pytorch_model.bin"
+    model_path: str = ""
     text_tokenizer_path: str = "google/flan-t5-base"
     midi_vocab_path: str = "models/text2midi/vocab_remi.pkl"
     device: str = "auto"
@@ -168,7 +217,7 @@ class Text2MidiGenerator(MidiGenerator):
             The loaded MIDI tokenizer object.
 
         Raises:
-            GeneratorError: If vocabulary loading fails.
+            GeneratorError: If vocabulary loading fails or contains unsafe types.
         """
         try:
             vocab_path = Path(self._config.midi_vocab_path)
@@ -176,7 +225,13 @@ class Text2MidiGenerator(MidiGenerator):
                 raise FileNotFoundError(f"Vocabulary file not found: {vocab_path}")
 
             with open(vocab_path, "rb") as f:
-                tokenizer = pickle.load(f)
+                # Use RestrictedUnpickler to validate types DURING deserialization
+                # This prevents RCE attacks by checking before object instantiation
+                tokenizer = RestrictedUnpickler(f).load()
+
+            # Apply Miditok v3+ compatibility monkey-patch during initialization
+            # to avoid race conditions from patching during decode
+            self._apply_miditok_patch(tokenizer)
 
             return tokenizer
         except GeneratorError:
@@ -185,6 +240,39 @@ class Text2MidiGenerator(MidiGenerator):
             raise GeneratorError(
                 f"Failed to load MIDI tokenizer from {self._config.midi_vocab_path}: {e}"
             ) from e
+
+    def _apply_miditok_patch(self, tokenizer: Any) -> None:
+        """
+        Apply Miditok v3+ compatibility monkey-patch for v2.x vocab.
+
+        This patch adds missing attributes that Miditok v3+ expects but
+        v2.x vocabularies don't have. Called once during initialization
+        to avoid race conditions from patching during decode.
+
+        Args:
+            tokenizer: The MIDI tokenizer to patch.
+        """
+        if tokenizer and hasattr(tokenizer, "config"):
+            config = tokenizer.config
+            if not hasattr(config, "additional_tokens"):
+                config.additional_tokens = []
+
+            attrs_to_fix = {
+                "use_velocities": True,
+                "use_note_duration_programs": [],
+                "use_programs": True,
+                "use_chords": False,
+                "use_rests": False,
+                "use_tempos": True,
+                "use_time_signatures": True,
+                "use_sustain_pedals": False,
+                "use_pitch_bends": False,
+                "use_pitch_intervals": False,
+                "program_changes": False,
+                "default_note_duration": 0.5,
+            }
+            for attr, value in attrs_to_fix.items():
+                setattr(config, attr, value)
 
     def _load_model(self) -> Transformer:
         """
@@ -217,7 +305,9 @@ class Text2MidiGenerator(MidiGenerator):
                 model_path = Path(self._config.model_path)
                 if not model_path.exists():
                     raise FileNotFoundError(f"Model file not found: {model_path}")
-                state_dict = torch.load(model_path, map_location=self._device)
+                state_dict = torch.load(
+                    model_path, map_location=self._device, weights_only=True
+                )
                 model.load_state_dict(state_dict)
 
             model.eval()
@@ -309,28 +399,6 @@ class Text2MidiGenerator(MidiGenerator):
             if hasattr(self._midi_tokenizer, "decode"):
                 import os
                 import tempfile
-
-                # Apply Monkey Patch for Miditok v3+ compatibility with v2.x vocab
-                if hasattr(self._midi_tokenizer, "config"):
-                    if not hasattr(self._midi_tokenizer.config, "additional_tokens"):
-                        self._midi_tokenizer.config.additional_tokens = []
-                    
-                    attrs_to_fix = {
-                        "use_velocities": True,
-                        "use_note_duration_programs": [],
-                        "use_programs": True,
-                        "use_chords": False,
-                        "use_rests": False,
-                        "use_tempos": True,
-                        "use_time_signatures": True,
-                        "use_sustain_pedals": False,
-                        "use_pitch_bends": False,
-                        "use_pitch_intervals": False,
-                        "program_changes": False,
-                        "default_note_duration": 0.5,
-                    }
-                    for attr, value in attrs_to_fix.items():
-                        setattr(self._midi_tokenizer.config, attr, value)
 
                 # Decode tokens to a miditok.Midi (or similar) object
                 midi_obj = self._midi_tokenizer.decode(tokens)

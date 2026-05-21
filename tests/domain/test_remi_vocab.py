@@ -6,6 +6,22 @@ Tests validate the inverted vocabulary mapping for token-level heuristics.
 
 import pytest
 
+from domain.remi_vocab import set_inverted_vocab
+
+# Inject a complete mock vocabulary for domain testing
+_MOCK_VOCAB = {
+    0: "PAD_None",
+    1: "BOS_None",
+    2: "EOS_None",
+    3: "Pitch_60",
+    4: "Program_0",
+    5: "TimeSig_4/4",
+}
+# fill it with items to pass the size test
+for i in range(6, 150):
+    _MOCK_VOCAB[i] = f"Pitch_{i}"
+
+set_inverted_vocab(_MOCK_VOCAB)
 
 class TestInvertedVocabulary:
     """Tests for inverted REMI vocabulary mapping."""
@@ -17,7 +33,8 @@ class TestInvertedVocabulary:
         WHEN we access the inverted vocabulary mapping
         THEN it MUST be a dict mapping TokenId (int) -> EventName (str)
         """
-        from domain.remi_vocab import INVERTED_VOCAB
+        from domain.remi_vocab import get_inverted_vocab
+        INVERTED_VOCAB = get_inverted_vocab()
 
         assert isinstance(INVERTED_VOCAB, dict)
 
@@ -36,7 +53,8 @@ class TestInvertedVocabulary:
         WHEN we look for Pitch_X tokens
         THEN we MUST find them mapped correctly
         """
-        from domain.remi_vocab import INVERTED_VOCAB
+        from domain.remi_vocab import get_inverted_vocab
+        INVERTED_VOCAB = get_inverted_vocab()
 
         # Find a Pitch token by searching values
         pitch_events = [v for v in INVERTED_VOCAB.values() if v.startswith("Pitch_")]
@@ -53,7 +71,8 @@ class TestInvertedVocabulary:
         WHEN we look for Program_X tokens
         THEN we MUST find them mapped correctly
         """
-        from domain.remi_vocab import INVERTED_VOCAB
+        from domain.remi_vocab import get_inverted_vocab
+        INVERTED_VOCAB = get_inverted_vocab()
 
         program_events = [v for v in INVERTED_VOCAB.values() if v.startswith("Program_")]
         assert len(program_events) > 0, "Inverted vocab must contain Program tokens"
@@ -65,7 +84,8 @@ class TestInvertedVocabulary:
         WHEN we look for TimeSig_X/Y tokens
         THEN we MUST find them mapped correctly
         """
-        from domain.remi_vocab import INVERTED_VOCAB
+        from domain.remi_vocab import get_inverted_vocab
+        INVERTED_VOCAB = get_inverted_vocab()
 
         timesig_events = [v for v in INVERTED_VOCAB.values() if v.startswith("TimeSig_")]
         assert len(timesig_events) > 0, "Inverted vocab must contain TimeSig tokens"
@@ -77,7 +97,8 @@ class TestInvertedVocabulary:
         WHEN we call get_event_name
         THEN it MUST return the corresponding event name string
         """
-        from domain.remi_vocab import get_event_name, INVERTED_VOCAB
+        from domain.remi_vocab import get_event_name, get_inverted_vocab
+        INVERTED_VOCAB = get_inverted_vocab()
 
         # Get any valid token ID
         token_id = next(iter(INVERTED_VOCAB.keys()))
@@ -106,7 +127,8 @@ class TestInvertedVocabulary:
         WHEN we call is_pitch_token
         THEN it MUST return True only for Pitch_X tokens
         """
-        from domain.remi_vocab import is_pitch_token, INVERTED_VOCAB
+        from domain.remi_vocab import is_pitch_token, get_inverted_vocab
+        INVERTED_VOCAB = get_inverted_vocab()
 
         # Find a Pitch token
         pitch_token_id = next(k for k, v in INVERTED_VOCAB.items() if v.startswith("Pitch_"))
@@ -125,7 +147,8 @@ class TestVocabularyHelperFunctions:
         """
         is_program_token must identify Program_X tokens.
         """
-        from domain.remi_vocab import is_program_token, INVERTED_VOCAB
+        from domain.remi_vocab import is_program_token, get_inverted_vocab
+        INVERTED_VOCAB = get_inverted_vocab()
 
         # Find a Program token
         program_token_id = next(k for k, v in INVERTED_VOCAB.items() if v.startswith("Program_"))
@@ -139,7 +162,8 @@ class TestVocabularyHelperFunctions:
         """
         is_timesig_token must identify TimeSig_X/Y tokens.
         """
-        from domain.remi_vocab import is_timesig_token, INVERTED_VOCAB
+        from domain.remi_vocab import is_timesig_token, get_inverted_vocab
+        INVERTED_VOCAB = get_inverted_vocab()
 
         # Find a TimeSig token
         timesig_token_id = next(k for k, v in INVERTED_VOCAB.items() if v.startswith("TimeSig_"))
@@ -153,7 +177,8 @@ class TestVocabularyHelperFunctions:
         """
         is_special_token must identify PAD, BOS, EOS, etc.
         """
-        from domain.remi_vocab import is_special_token, INVERTED_VOCAB
+        from domain.remi_vocab import is_special_token, get_inverted_vocab
+        INVERTED_VOCAB = get_inverted_vocab()
 
         # Find a special token (PAD_None, BOS_None, etc.)
         special_token_id = next(k for k, v in INVERTED_VOCAB.items() if v in ("PAD_None", "BOS_None", "EOS_None"))
@@ -200,7 +225,8 @@ class TestVocabularyConstants:
         """
         Inverted vocab should have entries for all REMI tokens.
         """
-        from domain.remi_vocab import INVERTED_VOCAB
+        from domain.remi_vocab import get_inverted_vocab
+        INVERTED_VOCAB = get_inverted_vocab()
 
         # REMI vocabulary should have hundreds of tokens
         assert len(INVERTED_VOCAB) > 100

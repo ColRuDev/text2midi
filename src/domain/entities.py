@@ -116,6 +116,8 @@ class GenerationProfile:
             raise ValueError(f"top_k must be >= 1, got {self.top_k}")
         if self.max_tokens < 1:
             raise ValueError(f"max_tokens must be >= 1, got {self.max_tokens}")
+        if self.num_outputs < 1:
+            raise ValueError(f"num_outputs must be >= 1, got {self.num_outputs}")
 
         # Validate reward weights
         if any(w < 0 for w in (self.clap_weight, self.key_weight, self.note_weight)):

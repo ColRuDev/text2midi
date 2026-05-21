@@ -98,6 +98,14 @@ class BestOfNSearch:
             intent=intent,
             num_variations=1,
         )
+        
+        # Validate that we received at least one prompt
+        if not technical_prompts:
+            raise RuntimeError(
+                "Translator returned empty prompts list. "
+                "Cannot proceed with generation."
+            )
+        
         technical_prompt = technical_prompts[0]
 
         logger.info(
@@ -125,18 +133,26 @@ class BestOfNSearch:
             )
 
             # Render to audio and evaluate
-            audio_data: AudioSamples = self.audio_renderer.render(tokens)
-            reward = self.evaluator.evaluate(
-                sequence=sequence,
-                audio_data=audio_data,
-                intent=intent,
-            )
+            # Wrap in try/except to handle individual sequence failures gracefully
+            try:
+                audio_data: AudioSamples = self.audio_renderer.render(tokens)
+                reward = self.evaluator.evaluate(
+                    sequence=sequence,
+                    audio_data=audio_data,
+                    intent=intent,
+                )
+            except Exception as e:
+                logger.warning(
+                    f"Sequence {i} evaluation failed: {e}. Assigning -inf reward."
+                )
+                reward = float("-inf")
+
             sequence.reward = reward
 
             logger.debug(f"Sequence {i}: {len(tokens)} tokens, reward={reward:.3f}")
 
-            # Track best sequence
-            if reward > best_reward:
+            # Track best sequence (handle case where all rewards are -inf)
+            if best_sequence is None or reward > best_reward:
                 best_reward = reward
                 best_sequence = sequence
 

@@ -18,11 +18,60 @@ from __future__ import annotations
 import pickle
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, List
+from typing import Any, List, Set
 
 from adapters.exceptions import GeneratorError
 from domain.entities import MidiBytes, PromptText, TokenId
 from domain.interfaces import BatchMidiGenerator
+
+# Allowed types for safe pickle loading (MIDI tokenizer objects)
+# Includes builtin types and numpy types needed for miditok v2/v3 compatibility
+_SAFE_PICKLE_TYPES: Set[str] = {
+    # miditok tokenizer classes
+    "miditok.MIDITokenizer",
+    "miditok.tokenizations.REMI.REMI",
+    "miditok.tokenizations.TSD.TSD",
+    "miditok.tokenizations.MIDIPlus.MIDIPlus",
+    # builtin types needed for pickle reconstruction
+    "builtins.int",
+    "builtins.dict",
+    "builtins.list",
+    "builtins.tuple",
+    "builtins.set",
+    "builtins.str",
+    "builtins.float",
+    "builtins.bool",
+    "builtins.NoneType",
+    # numpy types needed for miditok v2/v3 vocabularies
+    "numpy.ndarray",
+    "numpy.core.multiarray._reconstruct",
+    "numpy.core.multiarray.scalar",
+    "numpy.dtype",
+    "numpy.core._dtype_ctypes",
+    "miditok.tokenizations.remi.REMI",
+    "miditok.classes.TokenizerConfig",
+}
+
+
+class RestrictedUnpickler(pickle.Unpickler):
+    """
+    Secure unpickler that validates types DURING deserialization.
+
+    Prevents RCE attacks by rejecting any object that is not in the
+    allowed types list. The check happens BEFORE the object is instantiated,
+    not after loading when malicious code may have already executed.
+    """
+
+    def find_class(self, module: str, name: str) -> Any:
+        """Validate that the requested class is in the allowed list."""
+        full_name = f"{module}.{name}"
+        # Check if this is an allowed type using exact match
+        if full_name in _SAFE_PICKLE_TYPES:
+            return super().find_class(module, name)
+        raise GeneratorError(
+            f"Unsafe pickle class: {full_name}. "
+            f"Expected one of: {_SAFE_PICKLE_TYPES}"
+        )
 
 
 @dataclass
@@ -92,10 +141,15 @@ class MidiLLMGenerator(BatchMidiGenerator):
         self._config = config
         self._device = self._resolve_device()
         self._tokenizer = self._load_tokenizer()
+        # Initialize _midi_tokenizer before loading vocab to handle early return
+        self._midi_tokenizer = None
         self._midi_vocab = self._load_midi_vocab()
-        self._inv_midi_vocab = {v: k for k, v in self._midi_vocab.items()}
+        self._inv_midi_vocab = (
+            {v: k for k, v in self._midi_vocab.items()}
+            if isinstance(self._midi_vocab, dict)
+            else {}
+        )
         self._model = self._load_model()
-        self._midi_tokenizer = None  # Optional miditok object for decoding
 
     def _resolve_device(self) -> str:
         """
@@ -104,6 +158,10 @@ class MidiLLMGenerator(BatchMidiGenerator):
         Returns:
             Device string: "cuda", "mps", or "cpu".
         """
+        # Skip torch import for mock backend
+        if self._config.backend == "mock":
+            return "cpu"
+
         import torch
 
         if self._config.device == "auto":
@@ -142,7 +200,7 @@ class MidiLLMGenerator(BatchMidiGenerator):
             Dictionary mapping token names to IDs.
 
         Raises:
-            GeneratorError: If vocabulary loading fails.
+            GeneratorError: If vocabulary loading fails or contains unsafe types.
         """
         try:
             vocab_path = Path(self._config.midi_vocab_path)
@@ -151,7 +209,16 @@ class MidiLLMGenerator(BatchMidiGenerator):
                 return {"PAD": 0, "BOS": 1, "EOS": 2}
 
             with open(vocab_path, "rb") as f:
-                tokenizer = pickle.load(f)
+                # Use RestrictedUnpickler to validate types DURING deserialization
+                # This prevents RCE attacks by checking before object instantiation
+                tokenizer = RestrictedUnpickler(f).load()
+
+            # Assign tokenizer for later use in decode_to_midi
+            self._midi_tokenizer = tokenizer
+
+            # Apply Miditok v3+ compatibility monkey-patch during initialization
+            # to avoid race conditions from patching during decode
+            self._apply_miditok_patch()
 
             # Handle both dict and miditok tokenizer objects
             if hasattr(tokenizer, "vocab"):
@@ -163,6 +230,36 @@ class MidiLLMGenerator(BatchMidiGenerator):
             raise GeneratorError(
                 f"Failed to load MIDI vocab from {self._config.midi_vocab_path}: {e}"
             ) from e
+
+    def _apply_miditok_patch(self) -> None:
+        """
+        Apply Miditok v3+ compatibility monkey-patch for v2.x vocab.
+
+        This patch adds missing attributes that Miditok v3+ expects but
+        v2.x vocabularies don't have. Called once during initialization
+        to avoid race conditions from patching during decode.
+        """
+        if self._midi_tokenizer and hasattr(self._midi_tokenizer, "config"):
+            config = self._midi_tokenizer.config
+            if not hasattr(config, "additional_tokens"):
+                config.additional_tokens = []
+
+            attrs_to_fix = {
+                "use_velocities": True,
+                "use_note_duration_programs": [],
+                "use_programs": True,
+                "use_chords": False,
+                "use_rests": False,
+                "use_tempos": True,
+                "use_time_signatures": True,
+                "use_sustain_pedals": False,
+                "use_pitch_bends": False,
+                "use_pitch_intervals": False,
+                "program_changes": False,
+                "default_note_duration": 0.5,
+            }
+            for attr, value in attrs_to_fix.items():
+                setattr(config, attr, value)
 
     def _load_model(self) -> Any:
         """
@@ -191,9 +288,9 @@ class MidiLLMGenerator(BatchMidiGenerator):
                         "Install it with: pip install vllm"
                     )
             else:  # transformers
-                from transformers import AutoModelForSeq2SeqLM
+                from transformers import AutoModelForCausalLM
 
-                model = AutoModelForSeq2SeqLM.from_pretrained(self._config.model_name)
+                model = AutoModelForCausalLM.from_pretrained(self._config.model_name)
                 model.to(self._device)
                 model.eval()
                 return model
@@ -278,22 +375,32 @@ class MidiLLMGenerator(BatchMidiGenerator):
         input_ids = inputs["input_ids"].to(self._device)
 
         if self._config.backend == "vllm":
-            # vLLM generation
-            outputs = self._model.generate(
-                prompts=[technical_prompt] * num_outputs,
+            # vLLM generation with SamplingParams
+            from vllm import SamplingParams
+
+            sampling_params = SamplingParams(
                 max_tokens=self._config.max_new_tokens,
                 temperature=self._config.temperature,
+                n=num_outputs,
+            )
+            outputs = self._model.generate(
+                prompts=[technical_prompt],
+                sampling_params=sampling_params,
             )
             # Extract token IDs from vLLM outputs
+            # vLLM returns RequestOutput with outputs list of CompletionOutput
             sequences = []
             for output in outputs:
-                sequences.append(output.token_ids)
+                for completion in output.outputs:
+                    sequences.append(list(completion.token_ids))
             return sequences
         else:
             # Transformers generation
+            attention_mask = inputs["attention_mask"].to(self._device)
             with torch.no_grad():
                 outputs = self._model.generate(
                     input_ids=input_ids,
+                    attention_mask=attention_mask,
                     max_new_tokens=self._config.max_new_tokens,
                     temperature=self._config.temperature,
                     num_return_sequences=num_outputs,
@@ -301,12 +408,10 @@ class MidiLLMGenerator(BatchMidiGenerator):
                 )
 
             # Convert tensor outputs to lists
+            # Note: Causal LM outputs include input prompt tokens; slice them off
             sequences = []
             for i in range(num_outputs):
-                seq = outputs[i].tolist()
-                # Remove input tokens if present (encoder-decoder models)
-                if len(seq) > input_ids.shape[1]:
-                    seq = seq[input_ids.shape[1] :]
+                seq = outputs[i][input_ids.shape[-1]:].tolist()
                 sequences.append(seq)
 
             return sequences

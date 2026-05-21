@@ -53,6 +53,73 @@ class LLMTranslator(ABC):
         ...
 
 
+class BatchMidiGenerator(ABC):
+    """
+    Abstract interface for batch MIDI generation.
+
+    The BatchMidiGenerator is responsible for:
+    1. Generating multiple complete MIDI sequences in a single batch
+    2. Decoding token sequences into actual MIDI file bytes
+
+    This is used by BestOfNSearch to generate N complete sequences
+    at once, then evaluate and select the best one.
+    """
+
+    @abstractmethod
+    def generate_batch(
+        self,
+        technical_prompt: PromptText,
+        num_outputs: int,
+    ) -> List[List[TokenId]]:
+        """
+        Generate multiple complete MIDI token sequences in a single batch.
+
+        Unlike the step-by-step MidiGenerator, this generates N complete
+        sequences at once, suitable for Best-of-N selection.
+
+        Args:
+            technical_prompt: The structured prompt guiding generation.
+            num_outputs: Number of complete sequences to generate.
+
+        Returns:
+            A list of token sequences, where each sequence is a complete
+            MIDI representation ready for decoding.
+
+        Example:
+            >>> sequences = generator.generate_batch(
+            ...     "tempo:80 key:C_major instruments:piano",
+            ...     num_outputs=5,
+            ... )
+            >>> len(sequences)
+            5
+            >>> len(sequences[0])  # Each is a complete sequence
+            1024
+        """
+        ...
+
+    @abstractmethod
+    def decode_to_midi(self, tokens: List[TokenId]) -> MidiBytes:
+        """
+        Decode a token sequence into MIDI file bytes.
+
+        Converts the abstract token representation into a standard MIDI
+        file that can be played, saved, or further processed.
+
+        Args:
+            tokens: The complete token sequence to decode.
+
+        Returns:
+            Raw MIDI file bytes (Standard MIDI Format, type 0 or 1)
+            ready to be written to disk or streamed.
+
+        Example:
+            >>> midi_bytes = generator.decode_to_midi([60, 64, 67, 72, ...])
+            >>> with open("output.mid", "wb") as f:
+            ...     f.write(midi_bytes)
+        """
+        ...
+
+
 class MidiGenerator(ABC):
     """
     Abstract interface for MIDI token generation and decoding.

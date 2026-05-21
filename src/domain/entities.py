@@ -75,6 +75,10 @@ class GenerationProfile:
         strict_instruments: When True, severely penalize branches containing
             instruments not in the requested prompt. Defaults to False for
             graceful fallback when model generates unexpected instruments.
+        generator_type: Strategy for generation - "text2midi" (step-by-step)
+            or "midillm" (batch). Defaults to "text2midi".
+        num_outputs: Number of sequences to generate for batch generation
+            (Best-of-N). Defaults to 1. Used when generator_type="midillm".
 
     Raises:
         ValueError: If any parameter is invalid (negative, zero, or weights don't sum to ~1.0).
@@ -94,6 +98,10 @@ class GenerationProfile:
 
     # Heuristics toggles
     strict_instruments: bool = False
+
+    # Generator strategy selection (batch-generation spec)
+    generator_type: str = "text2midi"  # "text2midi" or "midillm"
+    num_outputs: int = 1  # For Best-of-N batch generation
 
     def __post_init__(self) -> None:
         """Validate all parameters after initialization."""

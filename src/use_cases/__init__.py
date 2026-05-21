@@ -11,6 +11,7 @@ Use cases are:
 - Orchestrators, not implementers
 """
 
+from .best_of_n_search import BestOfNSearch
 from .progressive_search import ProgressiveSearch
 
-__all__ = ["ProgressiveSearch"]
+__all__ = ["BestOfNSearch", "ProgressiveSearch"]

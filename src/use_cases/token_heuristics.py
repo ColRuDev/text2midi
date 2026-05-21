@@ -378,12 +378,9 @@ class TokenHeuristics(Evaluator):
         if not unrequested:
             return 1.0  # All instruments match
 
-        # Apply severe exponential penalty for unrequested instruments
-        # More unrequested = exponentially worse score
-        penalty_factor = len(unrequested) / max(len(found_programs), 1)
-        score = 1.0 - (penalty_factor ** 2)  # Exponential penalty
-
-        return max(0.1, score)
+        # Apply severe penalty for unrequested instruments
+        # Strict mode means STRICT. Any hallucinated instrument drops the score to minimum.
+        return 0.1
 
 
 # Instrument name to MIDI program number mapping

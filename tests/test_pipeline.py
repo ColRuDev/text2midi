@@ -2,6 +2,7 @@
 Tests for Text2MidiPipeline.
 
 Tests validate the DI container behavior and MIDI generation orchestration.
+Also validates the factory method for strategy selection (batch-generation spec).
 """
 
 import unittest
@@ -52,6 +53,22 @@ class MockGenerator:
 
     def decode_to_midi(self, tokens: List[TokenId]) -> MidiBytes:
         return b"MIDI_DATA_" + bytes(str(len(tokens)), "utf-8")
+
+
+class MockBatchGenerator:
+    """Mock BatchMidiGenerator for testing."""
+
+    def __init__(self):
+        self.call_count = 0
+
+    def generate_batch(
+        self, technical_prompt: PromptText, num_outputs: int
+    ) -> List[List[TokenId]]:
+        self.call_count += 1
+        return [[1, 2, 3] for _ in range(num_outputs)]
+
+    def decode_to_midi(self, tokens: List[TokenId]) -> MidiBytes:
+        return b"MIDI_BATCH_" + bytes(str(len(tokens)), "utf-8")
 
 
 class MockAudioRenderer:
@@ -138,6 +155,80 @@ class TestText2MidiPipelineInit(unittest.TestCase):
             self.assertIs(pipeline._generator, mock_generator)
             self.assertIs(pipeline._evaluator, mock_evaluator)
             self.assertIs(pipeline._audio_renderer, mock_audio)
+
+
+class TestText2MidiPipelineStrategySelection(unittest.TestCase):
+    """Test suite for pipeline strategy selection (batch-generation spec)."""
+
+    def test_pipeline_uses_progressive_search_for_text2midi_generator_type(self):
+        """
+        batch-generation spec: Pipeline MUST use ProgressiveSearch for text2midi.
+        
+        GIVEN a profile with generator_type="text2midi"
+        WHEN the pipeline is initialized
+        THEN it MUST use ProgressiveSearch
+        """
+        from pipeline import Text2MidiPipeline
+        from use_cases.progressive_search import ProgressiveSearch
+
+        mock_translator = MockTranslator()
+        mock_generator = MockGenerator()
+        mock_evaluator = MockEvaluator()
+        mock_audio = MockAudioRenderer()
+
+        with (
+            patch("pipeline.GoogleAITranslator", return_value=mock_translator),
+            patch("pipeline.Text2MidiGenerator", return_value=mock_generator),
+            patch("pipeline.CompositeEvaluator", return_value=mock_evaluator),
+            patch("pipeline.InMemoryFluidSynthEngine", return_value=mock_audio),
+        ):
+            pipeline = Text2MidiPipeline()
+
+            self.assertIsInstance(pipeline._search, ProgressiveSearch)
+
+    def test_pipeline_uses_best_of_n_search_for_midillm_generator_type(self):
+        """
+        batch-generation spec: Pipeline MUST use BestOfNSearch for midillm.
+        
+        GIVEN a profile with generator_type="midillm"
+        WHEN the pipeline generates
+        THEN it MUST use BestOfNSearch
+        """
+        from pipeline import Text2MidiPipeline
+        from use_cases.best_of_n_search import BestOfNSearch
+
+        mock_translator = MockTranslator()
+        mock_batch_generator = MockBatchGenerator()
+        mock_evaluator = MockEvaluator()
+        mock_audio = MockAudioRenderer()
+
+        with (
+            patch("pipeline.GoogleAITranslator", return_value=mock_translator),
+            patch("pipeline.MidiLLMGenerator", return_value=mock_batch_generator),
+            patch("pipeline.CompositeEvaluator", return_value=mock_evaluator),
+            patch("pipeline.InMemoryFluidSynthEngine", return_value=mock_audio),
+        ):
+            # Create profile with midillm generator type
+            profile = GenerationProfile(
+                generator_type="midillm",
+                num_outputs=3,
+                clap_weight=0.4,
+                key_weight=0.3,
+                note_weight=0.3,
+            )
+
+            pipeline = Text2MidiPipeline(profile=profile)
+
+            self.assertIsInstance(pipeline._search, BestOfNSearch)
+
+    def test_pipeline_factory_method_exists(self):
+        """
+        batch-generation spec: Pipeline MUST have factory method for strategy selection.
+        """
+        from pipeline import Text2MidiPipeline
+
+        self.assertTrue(hasattr(Text2MidiPipeline, "_create_search"))
+        self.assertTrue(callable(getattr(Text2MidiPipeline, "_create_search")))
 
 
 class TestText2MidiPipelineGenerate(unittest.TestCase):

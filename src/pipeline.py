@@ -7,12 +7,12 @@ once during initialization and reusing them across generate calls.
 
 Architecture:
     - Pipeline as DI Container: Heavy adapters instantiated once in __init__
-    - Uses ProgressiveSearch for the generation algorithm
+    - Factory Method for Strategy Selection: Selects ProgressiveSearch or BestOfNSearch
     - Clean separation between construction and execution
     - CLI-friendly interface with simple generate() method
 
 Data Flow:
-    CLI -> Pipeline (Loads Adapters) -> ProgressiveSearch -> MIDI bytes
+    CLI -> Pipeline (Loads Adapters + Selects Strategy) -> Search -> MIDI bytes
 """
 
 from __future__ import annotations
@@ -22,6 +22,10 @@ from typing import TYPE_CHECKING
 
 from adapters.audio.fluidsynth_memory import InMemoryFluidSynthEngine
 from adapters.evaluators.composite import CompositeEvaluator
+from adapters.generators.midillm_generator import (
+    MidiLLMGenerator,
+    MidiLLMGeneratorConfig,
+)
 from adapters.generators.text2midi_generator import (
     Text2MidiGenerator,
     Text2MidiGeneratorConfig,
@@ -31,10 +35,11 @@ from adapters.translators.google_ai_translator import (
     GoogleAITranslator,
 )
 from domain.entities import GenerationProfile, GenerationResult, Intent, MidiBytes
+from use_cases.best_of_n_search import BestOfNSearch
 from use_cases.progressive_search import ProgressiveSearch
 
 if TYPE_CHECKING:
-    from domain.interfaces import Evaluator
+    from domain.interfaces import BatchMidiGenerator, Evaluator, MidiGenerator
 
 logger = logging.getLogger(__name__)
 
@@ -46,13 +51,15 @@ class Text2MidiPipeline:
     This pipeline:
     - Instantiates heavy adapters once during initialization
     - Reuses the same adapters across all generate() calls
-    - Orchestrates ProgressiveSearch for MIDI generation
+    - Uses a factory method to select between ProgressiveSearch and BestOfNSearch
+    - Orchestrates generation strategy based on profile configuration
 
     Attributes:
         _translator: LLMTranslator for intent-to-prompt translation.
-        _generator: MidiGenerator for token generation and decoding.
+        _generator: MidiGenerator or BatchMidiGenerator for token generation.
         _evaluator: Evaluator for scoring MIDI sequences.
         _audio_renderer: AudioRenderer for audio synthesis.
+        _search: ProgressiveSearch or BestOfNSearch orchestrator.
 
     Example:
         >>> pipeline = Text2MidiPipeline()
@@ -65,8 +72,10 @@ class Text2MidiPipeline:
         self,
         translator_config: GoogleAIConfig | None = None,
         generator_config: Text2MidiGeneratorConfig | None = None,
+        midillm_config: MidiLLMGeneratorConfig | None = None,
         evaluator: "Evaluator | None" = None,
         sample_rate: int = 48000,
+        profile: GenerationProfile | None = None,
     ) -> None:
         """
         Initialize the pipeline with all heavy adapters.
@@ -77,8 +86,11 @@ class Text2MidiPipeline:
         Args:
             translator_config: Optional config for GoogleAITranslator.
             generator_config: Optional config for Text2MidiGenerator.
+            midillm_config: Optional config for MidiLLMGenerator.
             evaluator: Optional custom evaluator (uses CompositeEvaluator by default).
             sample_rate: Audio sample rate for FluidSynth (default: 48000 for CLAP).
+            profile: Optional profile to determine initial strategy.
+                If not provided, defaults to text2midi strategy.
 
         Raises:
             FileNotFoundError: If model files or prompts are not found.
@@ -87,14 +99,15 @@ class Text2MidiPipeline:
         """
         logger.info("Initializing Text2MidiPipeline...")
 
-        # Instantiate heavy adapters - these are loaded ONCE
+        # Store configs for later use
+        self._translator_config = translator_config
+        self._generator_config = generator_config
+        self._midillm_config = midillm_config
+        self._sample_rate = sample_rate
+
+        # Instantiate shared adapters - these are loaded ONCE
         self._translator = GoogleAITranslator(translator_config)
         logger.debug("Translator initialized")
-
-        self._generator = Text2MidiGenerator(
-            generator_config or Text2MidiGeneratorConfig()
-        )
-        logger.debug("Generator initialized")
 
         # Audio renderer for evaluation
         self._audio_renderer = InMemoryFluidSynthEngine(sample_rate=sample_rate)
@@ -111,14 +124,59 @@ class Text2MidiPipeline:
             )
         logger.debug("Evaluator initialized")
 
-        # Create the ProgressiveSearch orchestrator
-        self._search = ProgressiveSearch(
-            translator=self._translator,
-            generator=self._generator,
-            evaluator=self._evaluator,
-            audio_renderer=self._audio_renderer,
-        )
+        # Generator and Search strategy - set by factory method
+        self._generator: "MidiGenerator | BatchMidiGenerator | None" = None
+        self._search: ProgressiveSearch | BestOfNSearch | None = None
+
+        # Initialize strategy based on profile or default to text2midi
+        effective_profile = profile or GenerationProfile()
+        self._create_search(effective_profile)
+
         logger.info("Pipeline initialization complete")
+
+    def _create_search(self, profile: GenerationProfile) -> None:
+        """
+        Factory method to create the appropriate search strategy.
+
+        Inspects profile.generator_type to instantiate either:
+        - ProgressiveSearch with Text2MidiGenerator (step-by-step)
+        - BestOfNSearch with MidiLLMGenerator (batch)
+
+        Args:
+            profile: Configuration determining strategy selection.
+        """
+        if profile.generator_type == "midillm":
+            # Batch generation with BestOfNSearch
+            logger.info("Creating BestOfNSearch strategy with MidiLLMGenerator")
+
+            if self._midillm_config:
+                self._generator = MidiLLMGenerator(self._midillm_config)
+            else:
+                # Create default config
+                default_config = MidiLLMGeneratorConfig()
+                self._generator = MidiLLMGenerator(default_config)
+
+            self._search = BestOfNSearch(
+                translator=self._translator,
+                generator=self._generator,
+                evaluator=self._evaluator,
+                audio_renderer=self._audio_renderer,
+            )
+            logger.debug("BestOfNSearch initialized")
+        else:
+            # Default: step-by-step generation with ProgressiveSearch
+            logger.info("Creating ProgressiveSearch strategy with Text2MidiGenerator")
+
+            self._generator = Text2MidiGenerator(
+                self._generator_config or Text2MidiGeneratorConfig()
+            )
+            self._search = ProgressiveSearch(
+                translator=self._translator,
+                generator=self._generator,
+                evaluator=self._evaluator,
+                audio_renderer=self._audio_renderer,
+            )
+            logger.debug("ProgressiveSearch initialized")
 
     def generate(
         self,
@@ -152,11 +210,34 @@ class Text2MidiPipeline:
         """
         logger.info(f"Generating MIDI for: '{text[:50]}...' with profile {profile}")
 
+        # Check if strategy needs to change based on profile
+        if self._should_switch_strategy(profile):
+            logger.info(f"Switching strategy to {profile.generator_type}")
+            self._create_search(profile)
+
         # Create Intent from text
         intent = Intent(text=text)
 
-        # Execute ProgressiveSearch
+        # Execute search strategy
         result = self._search.execute(intent=intent, profile=profile)
 
         logger.info(f"Generation complete: {len(result.midi_bytes)} bytes")
         return result
+
+    def _should_switch_strategy(self, profile: GenerationProfile) -> bool:
+        """
+        Determine if the search strategy needs to change.
+
+        Args:
+            profile: New profile to check against current strategy.
+
+        Returns:
+            True if strategy should switch, False otherwise.
+        """
+        if self._search is None:
+            return True
+
+        current_is_batch = isinstance(self._search, BestOfNSearch)
+        requested_is_batch = profile.generator_type == "midillm"
+
+        return current_is_batch != requested_is_batch

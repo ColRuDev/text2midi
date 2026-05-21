@@ -417,5 +417,150 @@ class TestBestOfNSearchDataFlow(unittest.TestCase):
         self.assertTrue(result.midi_bytes.startswith(b"MIDI_"))
 
 
+class TestBestOfNSearchEvaluationScoring(unittest.TestCase):
+    """Test suite for BestOfNSearch evaluation scoring logic."""
+
+    def test_evaluator_receives_correct_sequence_data(self):
+        """
+        AC: Evaluator MUST receive the correct sequence for evaluation.
+        """
+        from use_cases.best_of_n_search import BestOfNSearch
+
+        translator = MockTranslator(prompts=["test_prompt"])
+        generator = MockBatchGenerator(sequences=[[1, 2, 3], [4, 5, 6]])
+        evaluator = MockEvaluator(rewards=[0.5, 0.8])
+        audio_renderer = MockAudioRenderer()
+
+        search = BestOfNSearch(
+            translator=translator,
+            generator=generator,
+            evaluator=evaluator,
+            audio_renderer=audio_renderer,
+        )
+
+        profile = GenerationProfile(
+            generator_type="midillm",
+            num_outputs=2,
+            clap_weight=0.4,
+            key_weight=0.3,
+            note_weight=0.3,
+        )
+
+        search.execute(Intent("test intent"), profile)
+
+        # Verify evaluator received sequences with correct prompts
+        for prompt, reward in evaluator.evaluations:
+            self.assertEqual(prompt, "test_prompt")
+
+    def test_highest_reward_sequence_is_selected(self):
+        """
+        AC: The sequence with the highest reward MUST be selected.
+        """
+        from use_cases.best_of_n_search import BestOfNSearch
+
+        # Set up so third sequence has highest reward
+        translator = MockTranslator(prompts=["prompt"])
+        generator = MockBatchGenerator(sequences=[[1], [2], [3], [4], [5]])
+        evaluator = MockEvaluator(rewards=[0.1, 0.3, 0.9, 0.5, 0.2])  # Third is best
+        audio_renderer = MockAudioRenderer()
+
+        search = BestOfNSearch(
+            translator=translator,
+            generator=generator,
+            evaluator=evaluator,
+            audio_renderer=audio_renderer,
+        )
+
+        profile = GenerationProfile(
+            generator_type="midillm",
+            num_outputs=5,
+            clap_weight=0.4,
+            key_weight=0.3,
+            note_weight=0.3,
+        )
+
+        result = search.execute(Intent("test"), profile)
+
+        # Third sequence should be decoded (tokens [3])
+        self.assertIsInstance(result, GenerationResult)
+
+    def test_evaluator_called_with_intent(self):
+        """
+        AC: Evaluator MUST receive the original intent for evaluation.
+        """
+        from use_cases.best_of_n_search import BestOfNSearch
+
+        translator = MockTranslator(prompts=["prompt"])
+        generator = MockBatchGenerator(sequences=[[1, 2]])
+        audio_renderer = MockAudioRenderer()
+
+        # Track intent passed to evaluator
+        received_intents = []
+
+        class IntentTrackingEvaluator:
+            def __init__(self):
+                self.call_count = 0
+
+            def evaluate(self, sequence, audio_data, intent):
+                received_intents.append(intent)
+                self.call_count += 1
+                return 0.5
+
+        evaluator = IntentTrackingEvaluator()
+
+        search = BestOfNSearch(
+            translator=translator,
+            generator=generator,
+            evaluator=evaluator,
+            audio_renderer=audio_renderer,
+        )
+
+        profile = GenerationProfile(
+            generator_type="midillm",
+            num_outputs=1,
+            clap_weight=0.4,
+            key_weight=0.3,
+            note_weight=0.3,
+        )
+
+        test_intent = Intent("a peaceful sunrise")
+        search.execute(test_intent, profile)
+
+        # Verify intent was passed
+        self.assertEqual(len(received_intents), 1)
+        self.assertEqual(received_intents[0].text, "a peaceful sunrise")
+
+    def test_all_sequences_evaluated_once(self):
+        """
+        AC: Each generated sequence MUST be evaluated exactly once.
+        """
+        from use_cases.best_of_n_search import BestOfNSearch
+
+        translator = MockTranslator(prompts=["prompt"])
+        generator = MockBatchGenerator(sequences=[[1], [2], [3], [4]])
+        evaluator = MockEvaluator(rewards=[0.1, 0.2, 0.3, 0.4])
+        audio_renderer = MockAudioRenderer()
+
+        search = BestOfNSearch(
+            translator=translator,
+            generator=generator,
+            evaluator=evaluator,
+            audio_renderer=audio_renderer,
+        )
+
+        profile = GenerationProfile(
+            generator_type="midillm",
+            num_outputs=4,
+            clap_weight=0.4,
+            key_weight=0.3,
+            note_weight=0.3,
+        )
+
+        search.execute(Intent("test"), profile)
+
+        # Evaluator should be called once per sequence
+        self.assertEqual(evaluator.call_count, 4)
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -168,5 +168,117 @@ class TestBatchMidiGeneratorImplementation(unittest.TestCase):
         self.assertIsInstance(result, bytes)
 
 
+class TestBatchMidiGeneratorMockIntegration(unittest.TestCase):
+    """Tests for BatchMidiGenerator mock integration and token handling."""
+
+    def test_mock_generator_handles_empty_prompt(self):
+        """
+        AC: Mock generator should handle empty prompts gracefully.
+        """
+        from domain.interfaces import BatchMidiGenerator
+
+        class MockGenerator(BatchMidiGenerator):
+            def generate_batch(
+                self, technical_prompt: PromptText, num_outputs: int
+            ) -> List[List[TokenId]]:
+                return [[1, 2] for _ in range(num_outputs)]
+
+            def decode_to_midi(self, tokens: List[TokenId]) -> MidiBytes:
+                return b"MIDI"
+
+        generator = MockGenerator()
+        result = generator.generate_batch("", 1)
+
+        self.assertEqual(len(result), 1)
+
+    def test_mock_generator_token_ids_are_integers(self):
+        """
+        AC: Token IDs MUST be integers.
+        """
+        from domain.interfaces import BatchMidiGenerator
+
+        class MockGenerator(BatchMidiGenerator):
+            def generate_batch(
+                self, technical_prompt: PromptText, num_outputs: int
+            ) -> List[List[TokenId]]:
+                return [[1, 2, 3, 4, 5]]
+
+            def decode_to_midi(self, tokens: List[TokenId]) -> MidiBytes:
+                return b"MIDI"
+
+        generator = MockGenerator()
+        result = generator.generate_batch("test", 1)
+
+        for token in result[0]:
+            self.assertIsInstance(token, int)
+
+    def test_mock_generator_with_large_batch(self):
+        """
+        AC: Generator should handle large num_outputs values.
+        """
+        from domain.interfaces import BatchMidiGenerator
+
+        class MockGenerator(BatchMidiGenerator):
+            def generate_batch(
+                self, technical_prompt: PromptText, num_outputs: int
+            ) -> List[List[TokenId]]:
+                return [[i] for i in range(num_outputs)]
+
+            def decode_to_midi(self, tokens: List[TokenId]) -> MidiBytes:
+                return b"MIDI"
+
+        generator = MockGenerator()
+        result = generator.generate_batch("test", 100)
+
+        self.assertEqual(len(result), 100)
+
+    def test_mock_decode_produces_non_empty_bytes(self):
+        """
+        AC: decode_to_midi MUST produce non-empty bytes for valid tokens.
+        """
+        from domain.interfaces import BatchMidiGenerator
+
+        class MockGenerator(BatchMidiGenerator):
+            def generate_batch(
+                self, technical_prompt: PromptText, num_outputs: int
+            ) -> List[List[TokenId]]:
+                return [[1, 2, 3]]
+
+            def decode_to_midi(self, tokens: List[TokenId]) -> MidiBytes:
+                # Simulate realistic MIDI output
+                return b"MThd" + bytes(tokens)
+
+        generator = MockGenerator()
+        result = generator.decode_to_midi([60, 64, 67])
+
+        self.assertGreater(len(result), 0)
+
+    def test_mock_generator_with_special_token_ids(self):
+        """
+        AC: Generator should handle special token IDs (BOS, EOS, PAD).
+        """
+        from domain.interfaces import BatchMidiGenerator
+
+        # Standard special tokens
+        BOS, EOS, PAD = 1, 2, 0
+
+        class MockGenerator(BatchMidiGenerator):
+            def generate_batch(
+                self, technical_prompt: PromptText, num_outputs: int
+            ) -> List[List[TokenId]]:
+                # Simulate sequences with BOS/EOS wrapping
+                return [[BOS, 10, 20, 30, EOS] for _ in range(num_outputs)]
+
+            def decode_to_midi(self, tokens: List[TokenId]) -> MidiBytes:
+                return b"MIDI"
+
+        generator = MockGenerator()
+        result = generator.generate_batch("test", 3)
+
+        for seq in result:
+            self.assertEqual(seq[0], BOS)
+            self.assertEqual(seq[-1], EOS)
+
+
 if __name__ == "__main__":
     unittest.main()

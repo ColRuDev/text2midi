@@ -109,6 +109,13 @@ Examples:
         help="Enable strict instrument checking (penalize unrequested instruments).",
     )
 
+    parser.add_argument(
+        "--translator-model",
+        type=str,
+        default="gemma-4-31b-it",
+        help="Google AI Studio model for intent translation (default: gemma-4-31b-it).",
+    )
+
     return parser.parse_args(args)
 
 
@@ -158,9 +165,12 @@ def main(argv: list[str] | None = None) -> int:
     output_path = Path(args.output)
 
     try:
+        from adapters.translators.google_ai_translator import GoogleAIConfig
+        
         # Create pipeline (loads heavy adapters once)
         logger.info("Initializing pipeline...")
-        pipeline = Text2MidiPipeline()
+        translator_config = GoogleAIConfig(model_name=args.translator_model)
+        pipeline = Text2MidiPipeline(translator_config=translator_config)
 
         # Generate MIDI
         logger.info(f"Generating MIDI for: '{args.text}'")

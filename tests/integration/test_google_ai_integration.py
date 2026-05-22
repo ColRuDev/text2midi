@@ -57,7 +57,7 @@ class TestGoogleAIIntegration:
     def test_custom_config_uses_specified_model(self):
         """Custom config parameters are respected."""
         config = GoogleAIConfig(
-            model_name="gemma-4-31b-it",
+            model_name="gemma-4-26b-a4b-it",
             temperature=0.3,  # Lower for more deterministic output
             max_output_tokens=300,
         )

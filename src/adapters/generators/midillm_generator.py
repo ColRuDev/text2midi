@@ -92,7 +92,7 @@ class MidiLLMGeneratorConfig:
         ValueError: If device is not one of "auto", "cuda", "mps", or "cpu".
     """
 
-    model_name: str = "google/flan-t5-base"
+    model_name: str = "slseanwu/MIDI-LLM_Llama-3.2-1B"
     backend: str = "transformers"
     midi_vocab_path: str = "models/text2midi/vocab_remi.pkl"
     device: str = "auto"
@@ -149,6 +149,11 @@ class MidiLLMGenerator(BatchMidiGenerator):
             if isinstance(self._midi_vocab, dict)
             else {}
         )
+        
+        # Inject vocabulary mapping into the domain layer for heuristics evaluation
+        from domain.remi_vocab import set_inverted_vocab
+        set_inverted_vocab(self._inv_midi_vocab)
+        
         self._model = self._load_model()
 
     def _resolve_device(self) -> str:
@@ -186,7 +191,10 @@ class MidiLLMGenerator(BatchMidiGenerator):
         try:
             from transformers import AutoTokenizer
 
-            return AutoTokenizer.from_pretrained(self._config.model_name)
+            return AutoTokenizer.from_pretrained(
+                self._config.model_name,
+                pad_token="<|eot_id|>",
+            )
         except Exception as e:
             raise GeneratorError(
                 f"Failed to load tokenizer from {self._config.model_name}: {e}"
@@ -365,14 +373,21 @@ class MidiLLMGenerator(BatchMidiGenerator):
         """
         import torch
 
+        # Add space to prompt to match training format
+        full_prompt = technical_prompt + " "
+
         # Encode the prompt
         inputs = self._tokenizer(
-            technical_prompt,
+            full_prompt,
             return_tensors="pt",
-            padding=True,
-            truncation=True,
+            padding=False,
         )
         input_ids = inputs["input_ids"].to(self._device)
+        
+        # Add MIDI BOS token (AMT_GPT2_BOS_ID=1) shifted by LLAMA_VOCAB_SIZE (128256)
+        llama_vocab_size = 128256
+        midi_bos = torch.tensor([[1 + llama_vocab_size]], device=self._device)
+        input_ids = torch.cat([input_ids, midi_bos], dim=1)
 
         if self._config.backend == "vllm":
             # vLLM generation with SamplingParams
@@ -390,13 +405,15 @@ class MidiLLMGenerator(BatchMidiGenerator):
             # Extract token IDs from vLLM outputs
             # vLLM returns RequestOutput with outputs list of CompletionOutput
             sequences = []
+            max_vocab_id = max(self._inv_midi_vocab.keys()) if self._inv_midi_vocab else 600
             for output in outputs:
                 for completion in output.outputs:
-                    sequences.append(list(completion.token_ids))
+                    seq = [max(0, min(t - llama_vocab_size, max_vocab_id)) for t in completion.token_ids]
+                    sequences.append(seq)
             return sequences
         else:
             # Transformers generation
-            attention_mask = inputs["attention_mask"].to(self._device)
+            attention_mask = torch.ones_like(input_ids)
             with torch.no_grad():
                 outputs = self._model.generate(
                     input_ids=input_ids,
@@ -405,13 +422,16 @@ class MidiLLMGenerator(BatchMidiGenerator):
                     temperature=self._config.temperature,
                     num_return_sequences=num_outputs,
                     do_sample=num_outputs > 1,
+                    pad_token_id=self._tokenizer.pad_token_id,
                 )
 
             # Convert tensor outputs to lists
             # Note: Causal LM outputs include input prompt tokens; slice them off
             sequences = []
+            max_vocab_id = max(self._inv_midi_vocab.keys()) if self._inv_midi_vocab else 600
             for i in range(num_outputs):
                 seq = outputs[i][input_ids.shape[-1]:].tolist()
+                seq = [max(0, min(t - llama_vocab_size, max_vocab_id)) for t in seq]
                 sequences.append(seq)
 
             return sequences

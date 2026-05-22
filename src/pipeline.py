@@ -130,77 +130,11 @@ class Text2MidiPipeline:
         # Lock for thread-safe generator cache mutations
         self._generators_lock = threading.Lock()
 
-        # Generator and Search strategy - set by factory method
+        # Generator and Search strategy - instantiated lazily by _get_search_for_profile
         self._generator: "MidiGenerator | BatchMidiGenerator | None" = None
         self._search: ProgressiveSearch | BestOfNSearch | None = None
 
-        # Initialize strategy based on profile or default to text2midi
-        effective_profile = profile or GenerationProfile()
-        self._create_search(effective_profile)
-
         logger.info("Pipeline initialization complete")
-
-    def _create_search(self, profile: GenerationProfile) -> None:
-        """
-        Factory method to create the appropriate search strategy.
-
-        Inspects profile.generator_type to instantiate either:
-        - ProgressiveSearch with Text2MidiGenerator (step-by-step)
-        - BestOfNSearch with MidiLLMGenerator (batch)
-
-        Reuses cached generators to prevent GPU memory leaks from
-        re-instantiation.
-
-        Args:
-            profile: Configuration determining strategy selection.
-        """
-        if profile.generator_type == "midillm":
-            # Batch generation with BestOfNSearch
-            logger.info("Creating BestOfNSearch strategy with MidiLLMGenerator")
-
-            # Check cache first to avoid re-instantiation (thread-safe)
-            with self._generators_lock:
-                if "midillm" in self._generators:
-                    logger.debug("Reusing cached MidiLLMGenerator")
-                    self._generator = self._generators["midillm"]
-                elif self._midillm_config:
-                    self._generator = MidiLLMGenerator(self._midillm_config)
-                    self._generators["midillm"] = self._generator
-                else:
-                    # Create default config
-                    default_config = MidiLLMGeneratorConfig()
-                    self._generator = MidiLLMGenerator(default_config)
-                    self._generators["midillm"] = self._generator
-
-            self._search = BestOfNSearch(
-                translator=self._translator,
-                generator=self._generator,
-                evaluator=self._evaluator,
-                audio_renderer=self._audio_renderer,
-            )
-            logger.debug("BestOfNSearch initialized")
-        else:
-            # Default: step-by-step generation with ProgressiveSearch
-            logger.info("Creating ProgressiveSearch strategy with Text2MidiGenerator")
-
-            # Check cache first to avoid re-instantiation (thread-safe)
-            with self._generators_lock:
-                if "text2midi" in self._generators:
-                    logger.debug("Reusing cached Text2MidiGenerator")
-                    self._generator = self._generators["text2midi"]
-                else:
-                    self._generator = Text2MidiGenerator(
-                        self._generator_config or Text2MidiGeneratorConfig()
-                    )
-                    self._generators["text2midi"] = self._generator
-
-            self._search = ProgressiveSearch(
-                translator=self._translator,
-                generator=self._generator,
-                evaluator=self._evaluator,
-                audio_renderer=self._audio_renderer,
-            )
-            logger.debug("ProgressiveSearch initialized")
 
     def generate(
         self,

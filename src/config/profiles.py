@@ -80,11 +80,35 @@ def deep_search() -> GenerationProfile:
     )
 
 
+def midillm_fast() -> GenerationProfile:
+    """
+    Create a MIDILLM_FAST profile - Uses MidiLLM for batch generation.
+    
+    Generates 4 candidate sequences in parallel.
+    
+    Returns:
+        A fresh GenerationProfile instance.
+    """
+    return GenerationProfile(
+        token_batch_size=500,
+        num_beams=1,
+        top_k=1,
+        max_tokens=2046,
+        clap_weight=0.4,
+        key_weight=0.3,
+        note_weight=0.3,
+        strict_instruments=False,
+        generator_type="midillm",
+        num_outputs=4,
+    )
+
+
 # Dictionary mapping profile names to factory functions
 PROFILE_FACTORIES = {
     "one-shot": one_shot,
     "balanced": balanced,
     "deep-search": deep_search,
+    "midillm-fast": midillm_fast,
 }
 
 
@@ -115,10 +139,13 @@ ONE_SHOT = one_shot()
 BALANCED = balanced()
 DEEP_SEARCH = deep_search()
 
+MIDILLM_FAST = midillm_fast()
+
 # Dictionary mapping profile names to profile instances
 # DEPRECATED: Use PROFILE_FACTORIES and get_profile() instead
 PROFILES = {
     "one-shot": ONE_SHOT,
     "balanced": BALANCED,
     "deep-search": DEEP_SEARCH,
+    "midillm-fast": MIDILLM_FAST,
 }

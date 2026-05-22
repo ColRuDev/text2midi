@@ -128,6 +128,7 @@ class BestOfNSearch:
         # Step 3: Evaluate all sequences and find the best
         best_sequence: MidiSequence | None = None
         best_reward = float("-inf")
+        decoded_midi_bytes = {}
 
         for i, tokens in enumerate(sequences):
             # Create MidiSequence for evaluation
@@ -155,7 +156,7 @@ class BestOfNSearch:
                 )
                 
                 # Temporarily store the decoded bytes to avoid double decoding
-                setattr(sequence, "_temp_midi_bytes", midi_bytes)
+                decoded_midi_bytes[id(sequence)] = midi_bytes
             except Exception as e:
                 logger.warning(
                     f"Sequence {i} evaluation failed: {e}. Assigning -inf reward."
@@ -183,7 +184,7 @@ class BestOfNSearch:
         )
 
         # Step 4: Return best result
-        midi_bytes = getattr(best_sequence, "_temp_midi_bytes", None)
+        midi_bytes = decoded_midi_bytes.get(id(best_sequence))
         if midi_bytes is None:
             midi_bytes = self.generator.decode_to_midi(best_sequence.tokens)
 

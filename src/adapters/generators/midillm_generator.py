@@ -141,8 +141,6 @@ class MidiLLMGenerator(BatchMidiGenerator):
         self._config = config
         self._device = self._resolve_device()
         self._tokenizer = self._load_tokenizer()
-        # Initialize _midi_tokenizer before loading vocab to handle early return
-        self._midi_tokenizer = None
         self._midi_vocab = self._load_midi_vocab()
         self._inv_midi_vocab = (
             {v: k for k, v in self._midi_vocab.items()}
@@ -221,13 +219,6 @@ class MidiLLMGenerator(BatchMidiGenerator):
                 # This prevents RCE attacks by checking before object instantiation
                 tokenizer = RestrictedUnpickler(f).load()
 
-            # Assign tokenizer for later use in decode_to_midi
-            self._midi_tokenizer = tokenizer
-
-            # Apply Miditok v3+ compatibility monkey-patch during initialization
-            # to avoid race conditions from patching during decode
-            self._apply_miditok_patch()
-
             # Handle both dict and miditok tokenizer objects
             if hasattr(tokenizer, "vocab"):
                 return tokenizer.vocab
@@ -238,36 +229,6 @@ class MidiLLMGenerator(BatchMidiGenerator):
             raise GeneratorError(
                 f"Failed to load MIDI vocab from {self._config.midi_vocab_path}: {e}"
             ) from e
-
-    def _apply_miditok_patch(self) -> None:
-        """
-        Apply Miditok v3+ compatibility monkey-patch for v2.x vocab.
-
-        This patch adds missing attributes that Miditok v3+ expects but
-        v2.x vocabularies don't have. Called once during initialization
-        to avoid race conditions from patching during decode.
-        """
-        if self._midi_tokenizer and hasattr(self._midi_tokenizer, "config"):
-            config = self._midi_tokenizer.config
-            if not hasattr(config, "additional_tokens"):
-                config.additional_tokens = []
-
-            attrs_to_fix = {
-                "use_velocities": True,
-                "use_note_duration_programs": [],
-                "use_programs": True,
-                "use_chords": False,
-                "use_rests": False,
-                "use_tempos": True,
-                "use_time_signatures": True,
-                "use_sustain_pedals": False,
-                "use_pitch_bends": False,
-                "use_pitch_intervals": False,
-                "program_changes": False,
-                "default_note_duration": 0.5,
-            }
-            for attr, value in attrs_to_fix.items():
-                setattr(config, attr, value)
 
     def _load_model(self) -> Any:
         """
@@ -373,8 +334,9 @@ class MidiLLMGenerator(BatchMidiGenerator):
         """
         import torch
 
-        # Add space to prompt to match training format
-        full_prompt = technical_prompt + " "
+        # Add system prompt and space to match training format exactly
+        system_prompt = "You are a world-class composer. Please compose some music according to the following description: "
+        full_prompt = system_prompt + technical_prompt + " "
 
         # Encode the prompt
         inputs = self._tokenizer(
@@ -384,9 +346,10 @@ class MidiLLMGenerator(BatchMidiGenerator):
         )
         input_ids = inputs["input_ids"].to(self._device)
         
-        # Add MIDI BOS token (AMT_GPT2_BOS_ID=1) shifted by LLAMA_VOCAB_SIZE (128256)
+        # Add MIDI BOS token (AMT_GPT2_BOS_ID=55026) shifted by LLAMA_VOCAB_SIZE (128256)
         llama_vocab_size = 128256
-        midi_bos = torch.tensor([[1 + llama_vocab_size]], device=self._device)
+        amt_gpt2_bos_id = 55026
+        midi_bos = torch.tensor([[amt_gpt2_bos_id + llama_vocab_size]], device=self._device)
         input_ids = torch.cat([input_ids, midi_bos], dim=1)
 
         if self._config.backend == "vllm":
@@ -405,10 +368,9 @@ class MidiLLMGenerator(BatchMidiGenerator):
             # Extract token IDs from vLLM outputs
             # vLLM returns RequestOutput with outputs list of CompletionOutput
             sequences = []
-            max_vocab_id = max(self._inv_midi_vocab.keys()) if self._inv_midi_vocab else 600
             for output in outputs:
                 for completion in output.outputs:
-                    seq = [max(0, min(t - llama_vocab_size, max_vocab_id)) for t in completion.token_ids]
+                    seq = [max(0, t - llama_vocab_size) for t in completion.token_ids]
                     sequences.append(seq)
             return sequences
         else:
@@ -428,10 +390,18 @@ class MidiLLMGenerator(BatchMidiGenerator):
             # Convert tensor outputs to lists
             # Note: Causal LM outputs include input prompt tokens; slice them off
             sequences = []
-            max_vocab_id = max(self._inv_midi_vocab.keys()) if self._inv_midi_vocab else 600
+            eos_token_id = self._tokenizer.eos_token_id
+            pad_token_id = self._tokenizer.pad_token_id
             for i in range(num_outputs):
                 seq = outputs[i][input_ids.shape[-1]:].tolist()
-                seq = [max(0, min(t - llama_vocab_size, max_vocab_id)) for t in seq]
+                
+                # Truncate at EOS or PAD token
+                for idx, t in enumerate(seq):
+                    if t == eos_token_id or t == pad_token_id:
+                        seq = seq[:idx]
+                        break
+                        
+                seq = [max(0, t - llama_vocab_size) for t in seq]
                 sequences.append(seq)
 
             return sequences
@@ -450,20 +420,13 @@ class MidiLLMGenerator(BatchMidiGenerator):
             GeneratorError: If MIDI decoding fails.
         """
         try:
-            # Try to use miditok decoder if available
-            if self._midi_tokenizer and hasattr(self._midi_tokenizer, "decode"):
-                return self._decode_tokens(tokens)
-
-            # Fallback: return token events as string
-            events = [self._inv_midi_vocab.get(t, f"UNK_{t}") for t in tokens]
-            event_str = " ".join(events)
-            return f"MIDI_EVENTS: {event_str}".encode("utf-8")
+            return self._decode_tokens(tokens)
         except Exception as e:
             raise GeneratorError(f"MIDI decoding failed: {e}") from e
 
     def _decode_tokens(self, tokens: List[TokenId]) -> MidiBytes:
         """
-        Decode tokens using miditok if available.
+        Decode tokens using anticipation library.
 
         Args:
             tokens: Token sequence to decode.
@@ -473,30 +436,26 @@ class MidiLLMGenerator(BatchMidiGenerator):
         """
         import os
         import tempfile
+        try:
+            from anticipation.convert import events_to_midi
+        except ImportError:
+            raise GeneratorError("anticipation package is required to decode MidiLLM tokens.")
 
-        midi_obj = self._midi_tokenizer.decode(tokens)
+        # Truncate to a multiple of 3 (time, duration, note) as expected by anticipation
+        remainder = len(tokens) % 3
+        if remainder != 0:
+            tokens = tokens[:-remainder]
 
-        if hasattr(midi_obj, "dump_midi"):
-            fd, temp_path = tempfile.mkstemp(suffix=".mid")
-            os.close(fd)
-            try:
-                midi_obj.dump_midi(temp_path)
-                with open(temp_path, "rb") as f:
-                    return f.read()
-            finally:
-                if os.path.exists(temp_path):
-                    os.remove(temp_path)
-        elif hasattr(midi_obj, "dump"):
-            fd, temp_path = tempfile.mkstemp(suffix=".mid")
-            os.close(fd)
-            try:
-                midi_obj.dump(temp_path)
-                with open(temp_path, "rb") as f:
-                    return f.read()
-            finally:
-                if os.path.exists(temp_path):
-                    os.remove(temp_path)
+        # Convert anticipation tokens to MIDI object
+        midi_obj = events_to_midi(tokens)
 
-        # Fallback
-        events = [self._inv_midi_vocab.get(t, f"UNK_{t}") for t in tokens]
-        return f"MIDI_EVENTS: {' '.join(events)}".encode("utf-8")
+        # We need to get the raw bytes.
+        fd, temp_path = tempfile.mkstemp(suffix=".mid")
+        os.close(fd)
+        try:
+            midi_obj.save(temp_path)
+            with open(temp_path, "rb") as f:
+                return f.read()
+        finally:
+            if os.path.exists(temp_path):
+                os.remove(temp_path)

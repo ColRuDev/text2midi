@@ -92,21 +92,25 @@ class BestOfNSearch:
         Raises:
             RuntimeError: If batch generation fails completely.
         """
-        # Step 1: Translate intent to technical prompt
-        # For batch generation, we use a single prompt (not variations)
-        technical_prompts = self.translator.translate(
-            intent=intent,
-            num_variations=1,
-        )
-        
-        # Validate that we received at least one prompt
-        if not technical_prompts:
-            raise RuntimeError(
-                "Translator returned empty prompts list. "
-                "Cannot proceed with generation."
+        # Step 1: Get technical prompt
+        # If using midillm, it expects natural language directly, so bypass the translator
+        # if the profile specifies it, or just use the intent text.
+        if profile.generator_type == "midillm":
+            technical_prompt = intent.text
+        else:
+            technical_prompts = self.translator.translate(
+                intent=intent,
+                num_variations=1,
             )
-        
-        technical_prompt = technical_prompts[0]
+            
+            # Validate that we received at least one prompt
+            if not technical_prompts:
+                raise RuntimeError(
+                    "Translator returned empty prompts list. "
+                    "Cannot proceed with generation."
+                )
+            
+            technical_prompt = technical_prompts[0]
 
         logger.info(
             f"Starting Best-of-N search with num_outputs={profile.num_outputs}, "
@@ -135,12 +139,23 @@ class BestOfNSearch:
             # Render to audio and evaluate
             # Wrap in try/except to handle individual sequence failures gracefully
             try:
-                audio_data: AudioSamples = self.audio_renderer.render(tokens)
+                # First, ensure the tokens can be decoded into a valid MIDI file
+                midi_bytes = self.generator.decode_to_midi(tokens)
+                
+                # Use synthesize_from_bytes if available (preferred as it uses the real decoded MIDI)
+                if hasattr(self.audio_renderer, "synthesize_from_bytes"):
+                    audio_data: AudioSamples = self.audio_renderer.synthesize_from_bytes(midi_bytes)
+                else:
+                    audio_data: AudioSamples = self.audio_renderer.render(tokens)
+                    
                 reward = self.evaluator.evaluate(
                     sequence=sequence,
                     audio_data=audio_data,
                     intent=intent,
                 )
+                
+                # Temporarily store the decoded bytes to avoid double decoding
+                setattr(sequence, "_temp_midi_bytes", midi_bytes)
             except Exception as e:
                 logger.warning(
                     f"Sequence {i} evaluation failed: {e}. Assigning -inf reward."
@@ -168,7 +183,9 @@ class BestOfNSearch:
         )
 
         # Step 4: Return best result
-        midi_bytes = self.generator.decode_to_midi(best_sequence.tokens)
+        midi_bytes = getattr(best_sequence, "_temp_midi_bytes", None)
+        if midi_bytes is None:
+            midi_bytes = self.generator.decode_to_midi(best_sequence.tokens)
 
         return GenerationResult(
             midi_bytes=midi_bytes,

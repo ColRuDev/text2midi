@@ -8,6 +8,7 @@ They are skipped automatically if the key is not present.
 import os
 import pytest
 
+from adapters.exceptions import LLMTranslationError
 from adapters.translators.google_ai_translator import GoogleAITranslator, GoogleAIConfig
 from domain.entities import Intent
 
@@ -27,7 +28,13 @@ class TestGoogleAIIntegration:
         translator = GoogleAITranslator()
         
         intent = Intent("A peaceful piano melody at sunrise")
-        result = translator.translate(intent, num_variations=1)
+        try:
+            result = translator.translate(intent, num_variations=1)
+        except LLMTranslationError as e:
+            error_msg = str(e)
+            if any(code in error_msg for code in ["500", "503", "INTERNAL", "Service Unavailable"]):
+                pytest.skip(f"Google AI API is currently down: {e}")
+            raise
         
         assert len(result) == 1
         assert isinstance(result[0], str)
@@ -42,7 +49,13 @@ class TestGoogleAIIntegration:
         translator = GoogleAITranslator()
         
         intent = Intent("An upbeat electronic dance track")
-        result = translator.translate(intent, num_variations=3)
+        try:
+            result = translator.translate(intent, num_variations=3)
+        except LLMTranslationError as e:
+            error_msg = str(e)
+            if any(code in error_msg for code in ["500", "503", "INTERNAL", "Service Unavailable"]):
+                pytest.skip(f"Google AI API is currently down: {e}")
+            raise
         
         assert len(result) == 3
         
@@ -64,7 +77,13 @@ class TestGoogleAIIntegration:
         translator = GoogleAITranslator(config)
         
         intent = Intent("A sad cello solo")
-        result = translator.translate(intent, num_variations=1)
+        try:
+            result = translator.translate(intent, num_variations=1)
+        except LLMTranslationError as e:
+            error_msg = str(e)
+            if any(code in error_msg for code in ["500", "503", "INTERNAL", "Service Unavailable"]):
+                pytest.skip(f"Google AI API is currently down: {e}")
+            raise
         
         assert len(result) == 1
         assert isinstance(result[0], str)
@@ -84,7 +103,13 @@ class TestGoogleAIIntegration:
         
         # Intent with quotes, accents, and special chars
         intent = Intent("A melancholic \"nocturne\" with élégance — Chopin style")
-        result = translator.translate(intent, num_variations=1)
+        try:
+            result = translator.translate(intent, num_variations=1)
+        except LLMTranslationError as e:
+            error_msg = str(e)
+            if any(code in error_msg for code in ["500", "503", "INTERNAL", "Service Unavailable"]):
+                pytest.skip(f"Google AI API is currently down: {e}")
+            raise
         
         assert len(result) == 1
         assert isinstance(result[0], str)

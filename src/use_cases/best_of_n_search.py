@@ -92,25 +92,21 @@ class BestOfNSearch:
         Raises:
             RuntimeError: If batch generation fails completely.
         """
-        # Step 1: Get technical prompt
-        # If using midillm, it expects natural language directly, so bypass the translator
-        # if the profile specifies it, or just use the intent text.
-        if profile.generator_type == "midillm":
-            technical_prompt = intent.text
-        else:
-            technical_prompts = self.translator.translate(
-                intent=intent,
-                num_variations=1,
+        # Step 1: Get technical prompt from translator
+        # The translator (GoogleAI or PassThrough) handles the translation
+        technical_prompts = self.translator.translate(
+            intent=intent,
+            num_variations=1,
+        )
+
+        # Validate that we received at least one prompt
+        if not technical_prompts:
+            raise RuntimeError(
+                "Translator returned empty prompts list. "
+                "Cannot proceed with generation."
             )
-            
-            # Validate that we received at least one prompt
-            if not technical_prompts:
-                raise RuntimeError(
-                    "Translator returned empty prompts list. "
-                    "Cannot proceed with generation."
-                )
-            
-            technical_prompt = technical_prompts[0]
+
+        technical_prompt = technical_prompts[0]
 
         logger.info(
             f"Starting Best-of-N search with num_outputs={profile.num_outputs}, "

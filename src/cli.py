@@ -23,14 +23,14 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 
-from config.profiles import BALANCED, DEEP_SEARCH, ONE_SHOT, PROFILES
+from config.profiles import PROFILE_FACTORIES
 from domain.entities import GenerationProfile, GenerationResult
 from pipeline import Text2MidiPipeline
 
 logger = logging.getLogger(__name__)
 
-# Mapping of profile names to profile instances
-PROFILE_MAP: dict[str, GenerationProfile] = PROFILES
+# Mapping of profile names to factory functions (source of truth for CLI choices validation)
+PROFILE_NAMES: list[str] = list(PROFILE_FACTORIES.keys())
 
 
 def parse_args(args: list[str] | None = None) -> argparse.Namespace:
@@ -77,7 +77,7 @@ Examples:
         "--profile",
         "-p",
         type=str,
-        choices=list(PROFILE_MAP.keys()),
+        choices=PROFILE_NAMES,
         default="balanced",
         help="Generation profile: 'one-shot' (fast), 'balanced' (default), or 'deep-search' (quality).",
     )
@@ -112,8 +112,8 @@ Examples:
     parser.add_argument(
         "--translator-model",
         type=str,
-        default="gemma-4-31b-it",
-        help="Google AI Studio model for intent translation (default: gemma-4-31b-it).",
+        default=None,
+        help="Google AI Studio model for intent translation. Omit to bypass translation.",
     )
 
     return parser.parse_args(args)
@@ -165,11 +165,20 @@ def main(argv: list[str] | None = None) -> int:
     output_path = Path(args.output)
 
     try:
-        from adapters.translators.google_ai_translator import GoogleAIConfig
-        
         # Create pipeline (loads heavy adapters once)
         logger.info("Initializing pipeline...")
-        translator_config = GoogleAIConfig(model_name=args.translator_model)
+
+        # Conditionally create translator config based on CLI argument
+        # If --translator-model is omitted, use PassThroughTranslator (no API key needed)
+        # If provided, use GoogleAITranslator (requires GOOGLE_API_KEY)
+        if not args.translator_model or not args.translator_model.strip():
+            translator_config = None
+            logger.info("Using pass-through translator (no LLM translation)")
+        else:
+            from adapters.translators.google_ai_translator import GoogleAIConfig
+            translator_config = GoogleAIConfig(model_name=args.translator_model)
+            logger.info(f"Using Google AI translator with model: {args.translator_model}")
+
         pipeline = Text2MidiPipeline(translator_config=translator_config)
 
         # Generate MIDI

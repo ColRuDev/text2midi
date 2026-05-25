@@ -35,6 +35,7 @@ from adapters.translators.google_ai_translator import (
     GoogleAIConfig,
     GoogleAITranslator,
 )
+from adapters.translators.pass_through_translator import PassThroughTranslator
 from domain.entities import GenerationProfile, GenerationResult, Intent, MidiBytes
 from use_cases.best_of_n_search import BestOfNSearch
 from use_cases.progressive_search import ProgressiveSearch
@@ -106,9 +107,15 @@ class Text2MidiPipeline:
         self._midillm_config = midillm_config
         self._sample_rate = sample_rate
 
-        # Instantiate shared adapters - these are loaded ONCE
-        self._translator = GoogleAITranslator(translator_config)
-        logger.debug("Translator initialized")
+        # Instantiate translator based on config presence
+        # PassThroughTranslator when config is None (no API key validation)
+        # GoogleAITranslator when config is provided (validates API key)
+        if translator_config is None:
+            self._translator = PassThroughTranslator()
+            logger.debug("PassThroughTranslator initialized (no translation)")
+        else:
+            self._translator = GoogleAITranslator(translator_config)
+            logger.debug("GoogleAITranslator initialized")
 
         # Audio renderer for evaluation
         self._audio_renderer = InMemoryFluidSynthEngine(sample_rate=sample_rate)
@@ -217,12 +224,14 @@ class Text2MidiPipeline:
                     generator = MidiLLMGenerator(MidiLLMGeneratorConfig())
                     self._generators["midillm"] = generator
 
-            return BestOfNSearch(
+            search = BestOfNSearch(
                 translator=self._translator,
                 generator=generator,
                 evaluator=self._evaluator,
                 audio_renderer=self._audio_renderer,
             )
+            self._search = search
+            return search
         else:
             # text2midi strategy
             with self._generators_lock:
@@ -234,27 +243,13 @@ class Text2MidiPipeline:
                     )
                     self._generators["text2midi"] = generator
 
-            return ProgressiveSearch(
+            search = ProgressiveSearch(
                 translator=self._translator,
                 generator=generator,
                 evaluator=self._evaluator,
                 audio_renderer=self._audio_renderer,
             )
+            self._search = search
+            return search
 
-    def _should_switch_strategy(self, profile: GenerationProfile) -> bool:
-        """
-        Determine if the search strategy needs to change.
 
-        Args:
-            profile: New profile to check against current strategy.
-
-        Returns:
-            True if strategy should switch, False otherwise.
-        """
-        if self._search is None:
-            return True
-
-        current_is_batch = isinstance(self._search, BestOfNSearch)
-        requested_is_batch = profile.generator_type == "midillm"
-
-        return current_is_batch != requested_is_batch

@@ -119,13 +119,13 @@ class TestProfilesDictionary(unittest.TestCase):
             with self.subTest(key=key):
                 self.assertIsInstance(profile, GenerationProfile)
 
-    def test_profiles_dict_has_three_entries(self):
+    def test_profiles_dict_has_expected_entries(self):
         """
-        PROFILES should have exactly 3 entries.
+        PROFILES should have exactly 4 entries.
         """
         from config.profiles import PROFILES
 
-        self.assertEqual(len(PROFILES), 3)
+        self.assertEqual(len(PROFILES), 4)
 
 
 if __name__ == "__main__":

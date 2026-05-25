@@ -6,7 +6,6 @@ and passes None to the pipeline when the argument is omitted.
 """
 
 import os
-from typing import List
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -14,50 +13,8 @@ import pytest
 from domain.entities import MidiSequence
 from domain.interfaces import AudioSamples, MidiBytes, PromptText, TokenId
 
-
-# Mock classes for testing (duplicated to avoid import issues)
-class MockGenerator:
-    """Mock MidiGenerator for testing."""
-
-    def __init__(self):
-        self.call_count = 0
-
-    def generate_step(
-        self,
-        technical_prompt: PromptText,
-        current_tokens: List[TokenId],
-        num_tokens: int,
-    ) -> List[TokenId]:
-        self.call_count += 1
-        start = len(current_tokens)
-        return list(range(start, start + num_tokens))
-
-    def decode_to_midi(self, tokens: List[TokenId]) -> MidiBytes:
-        return b"MIDI_DATA_" + bytes(str(len(tokens)), "utf-8")
-
-
-class MockEvaluator:
-    """Mock Evaluator for testing."""
-
-    def __init__(self, reward: float = 0.7):
-        self.reward = reward
-        self.call_count = 0
-
-    def evaluate(
-        self,
-        sequence: MidiSequence,
-        audio_data: AudioSamples,
-        intent,
-    ) -> float:
-        self.call_count += 1
-        return self.reward
-
-
-class MockAudioRenderer:
-    """Mock AudioRenderer for testing."""
-
-    def render(self, tokens: List[TokenId]) -> AudioSamples:
-        return b"AUDIO_" + bytes(str(len(tokens)), "utf-8")
+# Import centralized mocks from conftest.py
+from tests.conftest import MockGenerator, MockEvaluator, MockAudioRenderer
 
 
 class TestCLIPassThroughTranslator:

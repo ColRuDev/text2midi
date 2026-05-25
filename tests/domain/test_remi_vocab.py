@@ -21,7 +21,22 @@ _MOCK_VOCAB = {
 for i in range(6, 150):
     _MOCK_VOCAB[i] = f"Pitch_{i}"
 
-set_inverted_vocab(_MOCK_VOCAB)
+
+@pytest.fixture(autouse=True)
+def setup_mock_vocab(monkeypatch):
+    """
+    Set the mock vocabulary before each test to prevent global state pollution.
+    
+    Uses pytest's monkeypatch fixture for safe global state overriding with
+    automatic cleanup after each test.
+    """
+    from domain.remi_vocab import set_inverted_vocab
+    
+    # Set the mock vocabulary
+    monkeypatch.setattr("domain.remi_vocab._INVERTED_VOCAB", _MOCK_VOCAB)
+    set_inverted_vocab(_MOCK_VOCAB)
+    yield
+    # monkeypatch automatically restores the original value
 
 class TestInvertedVocabulary:
     """Tests for inverted REMI vocabulary mapping."""

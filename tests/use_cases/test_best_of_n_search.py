@@ -23,65 +23,13 @@ from domain.interfaces import (
     TokenId,
 )
 
-
-class MockBatchGenerator(BatchMidiGenerator):
-    """Mock BatchMidiGenerator for testing."""
-
-    def __init__(self, sequences: List[List[TokenId]] | None = None):
-        self.sequences = sequences or [[1, 2, 3], [4, 5, 6], [7, 8, 9]]
-        self.call_count = 0
-        self.last_prompt = ""
-        self.last_num_outputs = 0
-
-    def generate_batch(
-        self, technical_prompt: PromptText, num_outputs: int
-    ) -> List[List[TokenId]]:
-        self.call_count += 1
-        self.last_prompt = technical_prompt
-        self.last_num_outputs = num_outputs
-        return self.sequences[:num_outputs]
-
-    def decode_to_midi(self, tokens: List[TokenId]) -> MidiBytes:
-        return b"MIDI_" + bytes(str(len(tokens)), "utf-8")
-
-
-class MockTranslator:
-    """Mock LLMTranslator for testing."""
-
-    def __init__(self, prompts: List[PromptText] | None = None):
-        self.prompts = prompts or ["prompt1", "prompt2"]
-        self.call_count = 0
-
-    def translate(self, intent: Intent, num_variations: int) -> List[PromptText]:
-        self.call_count += 1
-        return self.prompts[:num_variations]
-
-
-class MockEvaluator:
-    """Mock Evaluator for testing."""
-
-    def __init__(self, rewards: List[float] | None = None):
-        self.rewards = rewards or [0.5, 0.7, 0.6]
-        self.call_count = 0
-        self.evaluations: List[tuple] = []
-
-    def evaluate(
-        self,
-        sequence: MidiSequence,
-        audio_data: AudioSamples,
-        intent: Intent,
-    ) -> float:
-        self.call_count += 1
-        reward = self.rewards[self.call_count % len(self.rewards)]
-        self.evaluations.append((sequence.technical_prompt, reward))
-        return reward
-
-
-class MockAudioRenderer:
-    """Mock AudioRenderer for testing."""
-
-    def render(self, tokens: List[TokenId]) -> AudioSamples:
-        return b"AUDIO_" + bytes(str(len(tokens)), "utf-8")
+# Import centralized mocks from conftest.py
+from tests.conftest import (
+    MockBatchGenerator,
+    MockTranslator,
+    MockEvaluator,
+    MockAudioRenderer,
+)
 
 
 class TestBestOfNSearchExists(unittest.TestCase):

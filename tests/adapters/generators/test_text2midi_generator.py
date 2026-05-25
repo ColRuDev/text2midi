@@ -136,7 +136,6 @@ class TestText2MidiGeneratorConfig:
         assert config.model_path == ""
         assert config.text_tokenizer_path == "google/flan-t5-base"
         assert config.midi_vocab_path == "models/text2midi/vocab_remi.pkl"
-        assert config.bpe_path == ""
         assert config.device == "auto"
 
     def test_custom_values(self) -> None:

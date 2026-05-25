@@ -6,7 +6,6 @@ Also validates the factory method for strategy selection (batch-generation spec)
 """
 
 import unittest
-from typing import List
 from unittest.mock import MagicMock, patch
 
 from domain.entities import (
@@ -22,77 +21,14 @@ from domain.interfaces import (
     TokenId,
 )
 
-
-class MockTranslator:
-    """Mock LLMTranslator for testing."""
-
-    def __init__(self, prompts: List[PromptText] | None = None):
-        self.prompts = prompts or ["prompt1", "prompt2"]
-        self.call_count = 0
-
-    def translate(self, intent: Intent, num_variations: int) -> List[PromptText]:
-        self.call_count += 1
-        return self.prompts[:num_variations]
-
-
-class MockGenerator:
-    """Mock MidiGenerator for testing."""
-
-    def __init__(self):
-        self.call_count = 0
-
-    def generate_step(
-        self,
-        technical_prompt: PromptText,
-        current_tokens: List[TokenId],
-        num_tokens: int,
-    ) -> List[TokenId]:
-        self.call_count += 1
-        start = len(current_tokens)
-        return list(range(start, start + num_tokens))
-
-    def decode_to_midi(self, tokens: List[TokenId]) -> MidiBytes:
-        return b"MIDI_DATA_" + bytes(str(len(tokens)), "utf-8")
-
-
-class MockBatchGenerator:
-    """Mock BatchMidiGenerator for testing."""
-
-    def __init__(self):
-        self.call_count = 0
-
-    def generate_batch(
-        self, technical_prompt: PromptText, num_outputs: int
-    ) -> List[List[TokenId]]:
-        self.call_count += 1
-        return [[1, 2, 3] for _ in range(num_outputs)]
-
-    def decode_to_midi(self, tokens: List[TokenId]) -> MidiBytes:
-        return b"MIDI_BATCH_" + bytes(str(len(tokens)), "utf-8")
-
-
-class MockAudioRenderer:
-    """Mock AudioRenderer for testing."""
-
-    def render(self, tokens: List[TokenId]) -> AudioSamples:
-        return b"AUDIO_" + bytes(str(len(tokens)), "utf-8")
-
-
-class MockEvaluator:
-    """Mock Evaluator for testing."""
-
-    def __init__(self, reward: float = 0.7):
-        self.reward = reward
-        self.call_count = 0
-
-    def evaluate(
-        self,
-        sequence: MidiSequence,
-        audio_data: AudioSamples,
-        intent: Intent,
-    ) -> float:
-        self.call_count += 1
-        return self.reward
+# Import centralized mocks from conftest.py
+from tests.conftest import (
+    MockTranslator,
+    MockGenerator,
+    MockBatchGenerator,
+    MockAudioRenderer,
+    MockEvaluator,
+)
 
 
 class TestText2MidiPipelineInit(unittest.TestCase):

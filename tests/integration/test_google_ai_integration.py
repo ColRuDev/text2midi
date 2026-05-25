@@ -23,6 +23,7 @@ pytestmark = pytest.mark.skipif(
 class TestGoogleAIIntegration:
     """Integration tests with real Google AI API."""
 
+    @pytest.mark.timeout(10)
     def test_single_translation_returns_valid_prompt(self):
         """A single translation returns a valid technical prompt."""
         translator = GoogleAITranslator()
@@ -44,6 +45,7 @@ class TestGoogleAIIntegration:
         prompt_lower = result[0].lower()
         assert any(term in prompt_lower for term in ["tempo", "key", "chord", "melody", "piano"])
 
+    @pytest.mark.timeout(10)
     def test_multiple_variations_returns_distinct_prompts(self):
         """Multiple variations return different prompts."""
         translator = GoogleAITranslator()
@@ -67,6 +69,7 @@ class TestGoogleAIIntegration:
         unique_prompts = set(result)
         assert len(unique_prompts) >= 1  # At minimum, they exist
 
+    @pytest.mark.timeout(10)
     def test_custom_config_uses_specified_model(self):
         """Custom config parameters are respected."""
         config = GoogleAIConfig(
@@ -97,6 +100,7 @@ class TestGoogleAIIntegration:
         assert len(translator._system_prompt) > 100
         assert "Music Theory Consultant" in translator._system_prompt
 
+    @pytest.mark.timeout(10)
     def test_intent_with_special_characters(self):
         """Intent with special characters works correctly."""
         translator = GoogleAITranslator()

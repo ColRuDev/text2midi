@@ -20,3 +20,5 @@ wheels/
 # *.pth
 *.bin
 *.pkl
+
+.ipynb_checkpoints/

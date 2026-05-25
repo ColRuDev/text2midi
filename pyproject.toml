@@ -17,6 +17,7 @@ dependencies = [
     "python-dotenv>=1.2.2",
     "laion-clap>=1.1.7",
     "torchvision>=0.26.0",
+    "anticipation",
 ]
 
 [project.optional-dependencies]
@@ -31,6 +32,11 @@ dev = [
     "pytest-mock>=3.15.1",
     "pytest-timeout>=2.3.1",
 ]
+notebook = [
+    "ipykernel>=7.2.0",
+    "ipywidgets>=8.1.8",
+    "jupyterlab>=4.5.7",
+]
 
 [tool.jupytext]
 formats = "ipynb,py:percent"
@@ -41,3 +47,6 @@ cell_metadata_filter = "-all"
 pythonpath = ["src"]
 testpaths = ["tests"]
 addopts = "-v"
+
+[tool.uv.sources]
+anticipation = { git = "https://github.com/jthickstun/anticipation.git" }

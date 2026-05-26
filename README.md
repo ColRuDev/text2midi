@@ -41,6 +41,14 @@ cp .env.example .env
 GOOGLE_API_KEY=your_api_key_here
 ```
 
+## Hardware Requirements
+
+To run the generation models effectively, please note the following hardware constraints:
+
+- **CPU Evaluation**: The sequence evaluation phase (scoring generated MIDI with musical heuristics) is highly CPU-intensive.
+- **VRAM Requirements (MidiLLM)**: The MidiLLM model is the heaviest in the system and requires a dedicated GPU with at least **4GB of VRAM** for stable execution. However, despite being heavier, MidiLLM generates music significantly faster due to its batch processing capabilities.
+- **Execution Time (Text2Midi)**: Generation time for the Text2Midi model grows exponentially as the number of branches in beam search increases, because these searches are evaluated sequentially rather than in parallel.
+
 ## Usage
 
 > **Note**: All notebooks can be run directly in Google Colab using their respective badges below.

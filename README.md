@@ -89,6 +89,19 @@ To syncronized the .py with the .ipynb run
 uv run jupytext --sync notebooks/notebook.py
 ```
 
+## Implementation
+
+### [Source Code Architecture](./docs/implementation.md)
+
+This document addresses the structural design of the project, focusing on how the MIDI generation pipeline is built for maintainability and extensibility.
+
+The overview covers:
+1. **Domain Layer**: Core business entities and interfaces (`src/domain/`).
+2. **Use Cases Layer**: Orchestration logic for `ProgressiveSearch` and `BestOfNSearch` (`src/use_cases/`).
+3. **Adapters Layer**: Integrations with external models, translators, and evaluators (`src/adapters/`).
+4. **Configuration & Models**: Predefined profiles and neural network definitions.
+5. **Orchestration**: The Dependency Injection pipeline that wires the architecture together (`pipeline.py`).
+
 ## Datasets
 
 ### SymphonyNet

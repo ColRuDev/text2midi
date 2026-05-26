@@ -4,6 +4,17 @@ This repository implements a text-to-MIDI generation system that creates symboli
 
 **MSc Applied Artificial Intelligence - ICESI University**
 
+## Academic Context
+
+This project is part of the MSc in Applied Artificial Intelligence program at Universidad ICESI, Colombia. It focuses on symbolic music generation using deep learning techniques to bridge natural language and musical representation.
+
+### Objectives
+
+**Specific Objectives**
+- Review the state-of-the-art related to symbolic music generation models from textual descriptions.
+- Deepen the understanding and explanation of the training and generation process of the Transformer architecture model, detailing how it transforms text into symbolic music.
+- Design a prototype for the conversion of natural language descriptions into symbolic music, evaluating its impact on music generation.
+
 ## Installation
 
 This project requires Python 3.12+ and [uv](https://github.com/astral-sh/uv) package manager
@@ -23,6 +34,9 @@ uv sync
 
 [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/ColRuDev/text2midi/blob/main/notebooks/text2midi_train.ipynb)
 
+This notebook addresses the first part of **Objective 2** by providing a deep dive into the encoder-decoder architecture and the training process of the model.
+
+The analysis covers:
 1. **Dataset Preparation**: Preprocess SymphonyNet dataset using music21 to extract tempo, key, BPM, and instruments
 2. **Pseudo-Caption Generation**: Create template-based captions for pre-training
 3. **Model Architecture**:
@@ -32,6 +46,28 @@ uv sync
 4. **Training**: Complete training loop with the prepared datasets
 
 The notebook can be run directly in Google Colab using the badge above.
+
+### [text2midi generation exploration](./notebooks/text2midi_poc.ipynb)
+
+This notebook addresses the second part of **Objective 2** by focusing on the generation process. It explores how to use the pre-trained text2midi model to generate symbolic music from natural language prompts.
+
+The analysis covers:
+1. **Environment Setup & Model Loading**: Preparing the test lab and configuring the Hugging Face model for internal data extraction.
+2. **Initial Processing**: Tokenization and Embeddings, observing how text translates to a latent space.
+3. **Encoder Journey**: Analyzing self-attention and contextual understanding of the textual prompt.
+4. **Decoder & MIDI Generation**: Deconstructing the autoregressive mechanism and cross-attention step-by-step.
+5. **Raw Output & Final Reconstruction**: Decoding model logits back into playable MIDI files using REMI+.
+
+### [Generation Workflows Evaluation](./notebooks/evaluacion_flujos.ipynb)
+
+This notebook addresses **Objective 3** by evaluating the complete MIDI generation pipeline from natural language descriptions. It compares two distinct generation strategies and assesses their impact on the final musical output.
+
+The analysis covers:
+1. **Pipeline & Environment Setup**: Configuration of translators and necessary dependencies to run the end-to-end flow.
+2. **Base Prompt Definition**: Establishment of the natural language request ("Una melodía de piano melancólica...") to be processed.
+3. **Flow 1: Text2Midi (Progressive Search)**: Generation using the `one-shot` profile to evaluate progressive search capabilities.
+4. **Flow 2: MidiLLM (Best-of-N)**: Generation using the `midillm-fast` profile to evaluate batch generation and selection.
+5. **Conclusions & Review**: Comparative analysis of the resulting technical prompts, instrumentation adherence, tempo biases, and harmonic progression accuracy.
 
 ### Code Versioning using jupytext
 
@@ -69,7 +105,3 @@ uv run jupytext --sync notebooks/notebook.py
 - **Pre-trained Model**: [text2midi on HuggingFace](https://huggingface.co/amaai-lab/text2midi)
 - **SymphonyNet Dataset**: [https://symphonynet.github.io/](https://symphonynet.github.io/)
 - **MidiCaps Dataset**: [https://huggingface.co/datasets/amaai-lab/MidiCaps](https://huggingface.co/datasets/amaai-lab/MidiCaps)
-
-## Academic Context
-
-This project is part of the MSc in Applied Artificial Intelligence program at Universidad ICESI, Colombia. It focuses on symbolic music generation using deep learning techniques to bridge natural language and musical representation.

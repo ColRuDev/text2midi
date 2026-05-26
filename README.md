@@ -28,6 +28,19 @@ cd symbolic-music-generation
 uv sync
 ```
 
+### Environment Variables (.env)
+
+If you plan to use natural language translation via LLM (e.g., Gemini) by passing `--translator-model` in the CLI, you must set up your environment variables:
+
+1. Copy the example `.env` file or create a new one:
+```bash
+cp .env.example .env
+```
+2. Add your Google API Key to the `.env` file:
+```ini
+GOOGLE_API_KEY=your_api_key_here
+```
+
 ## Usage
 
 > **Note**: All notebooks can be run directly in Google Colab using their respective badges below.
@@ -112,6 +125,25 @@ python -m src.cli --text "A peaceful piano melody" --output peaceful.mid
 ```
 
 For a comprehensive guide on all available arguments (like `--profile`, `--translator-model`, and `--strict-instruments`) and advanced usage examples, refer to the [CLI Reference](./docs/cli_reference.md).
+
+## Developer Setup
+
+### Running Tests
+
+The project includes a comprehensive test suite covering the domain, use cases, and adapters. To run the tests, use `pytest` via `uv`:
+
+```bash
+uv run pytest tests/
+```
+
+### Local Models Directory
+
+When working locally, you should place downloaded model weights and vocabularies (e.g., the pre-trained `text2midi` model from Hugging Face) inside a `models/` directory at the root of the project.
+
+```bash
+mkdir -p models/
+# Download hugging face model bin and vocab to this folder
+```
 
 ## Datasets
 

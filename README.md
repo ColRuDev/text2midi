@@ -102,6 +102,17 @@ The overview covers:
 4. **Configuration & Models**: Predefined profiles and neural network definitions.
 5. **Orchestration**: The Dependency Injection pipeline that wires the architecture together (`pipeline.py`).
 
+### [Command Line Interface (CLI)](./docs/cli_reference.md)
+
+The project includes a robust CLI to generate MIDI files directly from the terminal. 
+
+**Basic Usage:**
+```bash
+python -m src.cli --text "A peaceful piano melody" --output peaceful.mid
+```
+
+For a comprehensive guide on all available arguments (like `--profile`, `--translator-model`, and `--strict-instruments`) and advanced usage examples, refer to the [CLI Reference](./docs/cli_reference.md).
+
 ## Datasets
 
 ### SymphonyNet

@@ -30,6 +30,8 @@ uv sync
 
 ## Usage
 
+> **Note**: All notebooks can be run directly in Google Colab using their respective badges below.
+
 ### [text2midi training analysis](./notebooks/text2midi_train.ipynb)
 
 [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/ColRuDev/text2midi/blob/main/notebooks/text2midi_train.ipynb)
@@ -45,9 +47,9 @@ The analysis covers:
    - Decoder: Processes encoded text and tokenized MIDI
 4. **Training**: Complete training loop with the prepared datasets
 
-The notebook can be run directly in Google Colab using the badge above.
-
 ### [text2midi generation exploration](./notebooks/text2midi_poc.ipynb)
+
+[![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/ColRuDev/text2midi/blob/main/notebooks/text2midi_poc.ipynb)
 
 This notebook addresses the second part of **Objective 2** by focusing on the generation process. It explores how to use the pre-trained text2midi model to generate symbolic music from natural language prompts.
 
@@ -59,6 +61,8 @@ The analysis covers:
 5. **Raw Output & Final Reconstruction**: Decoding model logits back into playable MIDI files using REMI+.
 
 ### [Generation Workflows Evaluation](./notebooks/evaluacion_flujos.ipynb)
+
+[![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/ColRuDev/text2midi/blob/main/notebooks/evaluacion_flujos.ipynb)
 
 This notebook addresses **Objective 3** by evaluating the complete MIDI generation pipeline from natural language descriptions. It compares two distinct generation strategies and assesses their impact on the final musical output.
 

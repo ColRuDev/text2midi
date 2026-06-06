@@ -2,23 +2,35 @@
 
 - [1. Introducción](#1-introducción)
 - [2. Requisitos](#2-requisitos)
-    - [2.1 Software](#2-1-software)
-    - [2.2 Hardware](#2-2-hardware)
-    - [2.3 Cuenta de Google AI Studio](#2-3-cuenta-google)
-- [3. Instalación](#3-instalacion)
-    - [3.1 Clonar el repositorio](#3-1-clonar)
-    - [3.2 Sincronizar dependencias](#3-2-sincronizar)
-    - [3.3 Configurar variables de entorno](#3-3-variables)
-    - [3.4 Descargar los pesos de los modelos](#3-4-modelos)
-- [4. Primera Ejecución](#4-primera-ejecucion)
-- [5. Resultados Generados](#5-resultados)
-- [6. Flujos de Trabajo por Rol](#6-flujos-rol)
-- [7. Uso de la Traducción LLM](#7-traduccion)
-- [8. Perfiles de Generación](#8-perfiles)
-- [9. Control de Calidad y Parámetros](#9-calidad)
-- [10. Configuración de FluidSynth](#10-fluidsynth)
+    - [2.1 Software](#21-software)
+    - [2.2 Hardware](#22-hardware)
+    - [2.3 Cuenta de Google AI Studio](#23-cuenta-de-google-ai-studio)
+- [3. Instalación](#3-instalación)
+    - [3.1 Clonar el repositorio](#31-clonar-el-repositorio)
+    - [3.2 Sincronizar dependencias](#32-sincronizar-dependencias)
+    - [3.3 Configurar variables de entorno](#33-configurar-variables-de-entorno)
+    - [3.4 Descargar los pesos de los modelos](#34-descargar-los-pesos-de-los-modelos)
+- [4. Primera Ejecución](#4-primera-ejecución)
+    - [4.1 Ejecución básica (Modo Pass-through)](#41-ejecución-básica-modo-pass-through)
+    - [4.2 Ejecución con Traductor LLM](#42-ejecución-con-traductor-llm)
+- [5. Resultados Generados](#5-resultados-generados)
+- [6. Flujos de Trabajo por Rol](#6-flujos-de-trabajo-por-rol)
+    - [6.1 Para músicos](#61-para-músicos)
+    - [6.2 Para investigadores de inteligencia artificial](#62-para-investigadores-de-inteligencia-artificial)
+    - [6.3 Para desarrolladores](#63-para-desarrolladores)
+- [7. Uso de la Traducción LLM](#7-uso-de-la-traducción-llm)
+- [8. Perfiles de Generación](#8-perfiles-de-generación)
+    - [8.1 Invocación por línea de comandos](#81-invocación-por-línea-de-comandos)
+    - [8.2 Compatibilidad entre perfiles y hardware](#82-compatibilidad-entre-perfiles-y-hardware)
+- [9. Control de Calidad y Parámetros](#9-control-de-calidad-y-parámetros)
+    - [9.1 Interpretación de las puntuaciones](#91-interpretación-de-las-puntuaciones)
+- [10. Configuración de FluidSynth](#10-configuración-de-fluidsynth)
+    - [10.1 Instalación en macOS](#101-instalación-en-macos)
+    - [10.2 Instalación en Linux (Debian/Ubuntu)](#102-instalación-en-linux-debianubuntu)
+    - [10.3 Instalación en Linux (Fedora/RHEL)](#103-instalación-en-linux-fedorarhel)
+    - [10.4 Instalación en Windows](#104-instalación-en-windows)
 - [11. Troubleshooting](#11-troubleshooting)
-- [12. Recursos Adicionales](#12-recursos)
+- [12. Recursos Adicionales](#12-recursos-adicionales)
 
 ## <a id="1"></a>1. Introducción
 
@@ -26,9 +38,9 @@ El sistema text2midi es una herramienta de interfaz de línea de comandos diseñ
 
 La herramienta está orientada a tres perfiles de usuario: músicos que buscan prototipado rápido, investigadores de inteligencia artificial interesados en la generación musical y desarrolladores que requieran integrar capacidades de síntesis MIDI. Para un análisis detallado sobre el diseño del pipeline de inferencia y el uso de *Reward-Guided Beam Search* (búsqueda por haz guiada por recompensas), se recomienda consultar el documento `docs/ARCHITECTURE.md`.
 
-## 2. Requisitos {#2-requisitos}
+## 2. Requisitos
 
-### 2.1 Software {#2-1-software}
+### 2.1 Software
 | Componente | Versión Mínima | Observación |
 |---|---|---|
 | Python | `3.12+` | Requerido para compatibilidad con tipado moderno |
@@ -36,7 +48,7 @@ La herramienta está orientada a tres perfiles de usuario: músicos que buscan p
 | FluidSynth | v2.0+ | Necesario para el renderizado de audio |
 | `GOOGLE_API_KEY`| N/A | Opcional (solo para el modo de traducción LLM) |
 
-### 2.2 Hardware {#2-2-hardware}
+### 2.2 Hardware
 | Recurso | Mínimo (Evaluación/CPU) | Recomendado (MidiLLM/GPU) |
 |---|---|---|
 | GPU | No requerida | NVIDIA con  >4 GB VRAM |
@@ -44,27 +56,27 @@ La herramienta está orientada a tres perfiles de usuario: músicos que buscan p
 | RAM | 8 GB | 16 GB |
 | Disco | 5 GB libres | 10 GB libres (para pesos de modelos) |
 
-### 2.3 Cuenta de Google AI Studio {#2-3-cuenta-google}
+### 2.3 Cuenta de Google AI Studio
 El uso de una `GOOGLE_API_KEY` es opcional. Solo es necesaria cuando se utiliza un modelo de traducción (ej. `gemma-4-31b`) para convertir lenguaje natural en prompts técnicos. En el modo *pass-through* (paso directo), el sistema no requiere conectividad externa.
 
 > ⚠️ **Advertencia:** La ausencia de FluidSynth en el `PATH` del sistema es la causa más común de errores durante la ejecución de la síntesis.
 
-## 3. Instalación {#3-instalacion}
+## 3. Instalación
 
-### 3.1 Clonar el repositorio {#3-1-clonar}
+### 3.1 Clonar el repositorio
 Se debe obtener una copia local del código fuente mediante el comando `git clone`:
 ```bash
 git clone https://github.com/colrudev/text2midi.git
 cd text2midi
 ```
 
-### 3.2 Sincronizar dependencias {#3-2-sincronizar}
+### 3.2 Sincronizar dependencias
 El proyecto utiliza `uv` para garantizar la reproducibilidad del entorno. Ejecute el siguiente comando para instalar todas las dependencias declaradas:
 ```bash
 uv sync
 ```
 
-### 3.3 Configurar variables de entorno {#3-3-variables}
+### 3.3 Configurar variables de entorno
 El sistema requiere un archivo `.env` para gestionar claves de API y configuraciones sensibles. Cree el archivo a partir de la plantilla proporcionada:
 ```bash
 cp .env.example .env
@@ -75,7 +87,7 @@ El archivo resultante debe seguir este formato:
 GOOGLE_API_KEY=tu_clave_aqui
 ```
 
-### 3.4 Descargar los pesos de los modelos {#3-4-modelos}
+### 3.4 Descargar los pesos de los modelos
 Los pesos de los modelos generadores deben ubicarse en el directorio `models/` en la raíz del proyecto. 
 > **Nota:** La descarga de estos pesos es un prerrequisito manual del usuario; el sistema no los descarga automáticamente durante la instalación.
 
@@ -83,7 +95,7 @@ Para una descripción detallada de los argumentos y banderas disponibles, consul
 
 Continúa con 4 para ejecutar la primera generación.
 
-## 4. Primera Ejecución {#4-primera-ejecucion}
+## 4. Primera Ejecución
 
 El sistema permite la generación de música MIDI mediante la interfaz de línea de comandos. Para asegurar la correcta ejecución, se debe utilizar el módulo de CLI en lugar del script de entrada.
 
@@ -105,7 +117,7 @@ python -m src.cli --text "Una pieza de piano atmosférica y cinematográfica" --
 
 El argumento `--profile` define la estrategia de búsqueda y calidad; por defecto se utiliza el perfil `balanced`. Para una lista exhaustiva de banderas y argumentos, consulte la `docs/cli_reference.md`.
 
-## 5. Resultados Generados {#5-resultados}
+## 5. Resultados Generados
 
 Por cada proceso de generación exitoso, el sistema escribe dos archivos en la ruta especificada:
 
@@ -114,7 +126,7 @@ Por cada proceso de generación exitoso, el sistema escribe dos archivos en la r
 
 Ejemplo de salida: `piano.mid` y `piano.txt`.
 
-## 6. Flujos de Trabajo por Rol {#6-flujos-rol}
+## 6. Flujos de Trabajo por Rol
 
 El uso de `text2midi` varía según los objetivos del usuario y su perfil técnico.
 
@@ -137,7 +149,7 @@ Para asegurar la reproducibilidad, se debe considerar que el *beam search* (bús
 
 Para tareas de depuración y optimización, se recomienda el uso de las banderas `--print-prompt` y `--verbose`. Asimismo, la bandera `--strict-instruments` permite penalizar la aparición de instrumentos no solicitados en la generación. Para detalles sobre la implementación de puertos y adaptadores, consulte la `ARCHITECTURE.md`, y para la referencia de comandos, la `docs/cli_reference.md`.
 
-## 7. Uso de la Traducción LLM {#7-traduccion}
+## 7. Uso de la Traducción LLM
 
 El sistema opera en dos modalidades de procesamiento de entrada:
 
@@ -156,7 +168,7 @@ python -m src.cli --text "Un piano triste y lento" --translator-model "gemini-2.
 
 El prompt resultante de la traducción es el contenido que se persiste en el archivo compañero `.txt` descrito en la 5.
 
-## 8. Perfiles de Generación {#8-perfiles}
+## 8. Perfiles de Generación
 
 El sistema expone distintos perfiles de generación que permiten equilibrar velocidad, consumo de VRAM y calidad musical. Cada perfil activa una combinación específica de estrategia de búsqueda y número de candidatos, controlable mediante el flag `--profile` (valor por defecto: `balanced`). La siguiente tabla resume las cuatro opciones disponibles, cuyos argumentos detallados se documentan en la `cli_reference.md`.
 
@@ -187,7 +199,7 @@ Para una iteración rápida sin GPU dedicada, el perfil `one-shot` ofrece result
 
 No todos los perfiles son ejecutables en cualquier hardware. `one-shot` y `balanced` funcionan tanto en CPU como en GPU; `deep-search` exige una GPU con al menos 6 GB de VRAM para evitar paginación a memoria del sistema, y `midillm-fast` requiere estrictamente ≥ 4 GB de VRAM. Si la invocación excede la VRAM disponible, el sistema emite un error de tipo CUDA OOM y la ejecución se interrumpe.
 
-## 9. Control de Calidad y Parámetros {#9-calidad}
+## 9. Control de Calidad y Parámetros
 
 El pipeline evalúa cada MIDI candidato mediante dos capas complementarias de *scoring* que se combinan en una puntuación final:
 
@@ -202,7 +214,7 @@ El flag `--strict-instruments` añade una penalización adicional cuando el MIDI
 
 La puntuación combinada devuelta por la etapa de evaluación se expresa como un valor escalar en el rango `[0, 1]`, donde valores cercanos a `1.0` indican alta alineación con el prompt técnico y baja presencia de violaciones heurísticas. Esta métrica es relativa entre ejecuciones y no debe interpretarse como una medida absoluta de calidad musical. Se recomienda comparar generaciones de un mismo prompt para identificar diferencias atribuibles al perfil o al hardware subyacente.
 
-## 10. Configuración de FluidSynth {#10-fluidsynth}
+## 10. Configuración de FluidSynth
 
 FluidSynth es un sintetizador de MIDI en tiempo real que el sistema utiliza como adaptador de salida para el renderizado de audio. Actúa como puente entre las secuencias simbólicas producidas por el modelo y la generación audible mediante *soundfonts* (colecciones de muestras instrumentales). Su instalación correcta se anticipó en 2.1 como requisito de sistema operativo y constituye el punto de fallo más frecuente en la fase de puesta en marcha.
 
@@ -242,7 +254,7 @@ La instalación puede verificarse en cualquier sistema operativo mediante la sig
 fluid-synth --version
 ```
 
-## 11. Troubleshooting {#11-troubleshooting}
+## 11. Troubleshooting
 
 La siguiente tabla compendia los fallos observados con mayor frecuencia durante la operación del sistema. Cada fila asocia un síntoma reconocible a su causa probable y a la acción correctiva documentada en otra sección de este manual.
 
@@ -259,7 +271,7 @@ La siguiente tabla compendia los fallos observados con mayor frecuencia durante 
 
 Para errores no contemplados en la tabla precedente, se recomienda consultar la referencia exhaustiva de banderas en `docs/cli_reference.md` y reproducir la ejecución con la bandera `--verbose` para obtener trazas a nivel `DEBUG` que faciliten el diagnóstico.
 
-## 12. Recursos Adicionales {#14-recursos}
+## 12. Recursos Adicionales
 
 Los cuadernos de análisis y experimentación están disponibles en el directorio `notebooks/` y pueden ejecutarse en Google Colab mediante las insignias dispuestas en el `README.md` del repositorio.
 

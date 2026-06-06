@@ -16,11 +16,9 @@
 - [7. Uso de la Traducción LLM](#7-traduccion)
 - [8. Perfiles de Generación](#8-perfiles)
 - [9. Control de Calidad y Parámetros](#9-calidad)
-- [10. Gestión de Modelos y Pesos](#10-modelos)
-- [11. Configuración de FluidSynth](#11-fluidsynth)
-- [12. VRAM y Rendimiento](#12-vram)
-- [13. Troubleshooting](#13-troubleshooting)
-- [14. Recursos Adicionales](#14-recursos)
+- [10. Configuración de FluidSynth](#10-fluidsynth)
+- [11. Troubleshooting](#11-troubleshooting)
+- [12. Recursos Adicionales](#12-recursos)
 
 ## 1. Introducción
 
@@ -204,75 +202,13 @@ El flag `--strict-instruments` añade una penalización adicional cuando el MIDI
 
 La puntuación combinada devuelta por la etapa de evaluación se expresa como un valor escalar en el rango `[0, 1]`, donde valores cercanos a `1.0` indican alta alineación con el prompt técnico y baja presencia de violaciones heurísticas. Esta métrica es relativa entre ejecuciones y no debe interpretarse como una medida absoluta de calidad musical. Se recomienda comparar generaciones de un mismo prompt para identificar diferencias atribuibles al perfil o al hardware subyacente.
 
-### 9.2 Reproducibilidad y semillas
-
-El pipeline admite la configuración de semillas aleatorias mediante variables de entorno, lo que permite reproducir resultados entre invocaciones. Esta funcionalidad es especialmente relevante para investigadores que requieran comparar perfiles bajo condiciones controladas. El detalle de las variables disponibles se documenta en la `cli_reference.md`.
-
-## 10. Gestión de Modelos y Pesos {#10-modelos}
-
-El sistema soporta dos generadores principales, cada uno con requisitos y características distintas:
-
-- **Text2Midi**: arquitectura *Transformer* encoder-decoder construida sobre `FlanT5-base` con tokenización `REMI+`. Constituye el generador por defecto para los perfiles `one-shot`, `balanced` y `deep-search`, y aplica *progressive search* (búsqueda progresiva) con evaluación iterativa. Su tiempo de generación crece de forma exponencial con el número de haces.
-- **MidiLLM**: modelo más pesado que procesa la generación mediante *batch processing* (procesamiento por lotes). Es utilizado exclusivamente por el perfil `midillm-fast` y requiere al menos 4 GB de VRAM. Resulta significativamente más rápido que `Text2Midi` gracias al paralelismo del procesamiento por lotes.
-
-Los pesos de ambos modelos (*model weights*) deben ubicarse en el directorio `models/` descrito en la 3.4, y se obtienen desde los repositorios públicos de Hugging Face indicados en el `README.md`. Si los archivos no están presentes, el pipeline abortará durante la carga inicial con un error de tipo `FileNotFoundError`.
-
-### 10.1 Formatos de pesos soportados
-
-El sistema acepta archivos en formato `.safetensors` y `.bin` (PyTorch). Se recomienda el uso de `safetensors` por su carga más rápida y por evitar la ejecución de código arbitrario durante la deserialización. Cada modelo publica un manifiesto con la lista exacta de archivos requeridos, que debe replicarse dentro de `models/` respetando la estructura de subdirectorios original.
-
-### 10.2 Actualización y versionado
-
-Las versiones de los pesos publicadas en Hugging Face están etiquetadas mediante *tags* semánticos. Se recomienda fijar una versión específica al descargar los archivos para garantizar la reproducibilidad de los resultados a lo largo del tiempo. La actualización a una versión mayor puede requerir cambios en el código del pipeline; se sugiere revisar el `CHANGELOG.md` del repositorio antes de actualizar.
-
-## 12. VRAM y Rendimiento {#12-vram}
-
-La selección del perfil de generación debe considerar la VRAM disponible y el tiempo máximo aceptable para una iteración. La siguiente tabla ofrece un árbol de decisión en función del hardware del usuario:
-
-| Hardware disponible | Perfil recomendado | Justificación |
-| :--- | :--- | :--- |
-| Sin GPU dedicada (solo CPU) | `one-shot` | Ejecución viable en CPU, aunque lenta; produce resultados en segundos. |
-| GPU con 4 GB de VRAM | `midillm-fast` | Mejor relación velocidad/calidad para hardware con VRAM limitada. |
-| GPU con ≥ 8 GB de VRAM | `balanced` o `deep-search` | Permite exploración progresiva de mayor calidad. |
-
-En términos de costo temporal, el perfil `deep-search` con 5 o más haces puede demandar entre 10 y 30 minutos por generación, dependiendo de la longitud del prompt y la disponibilidad de GPU. En contraste, `one-shot` se completa en segundos y `midillm-fast` se sitúa en el orden de minutos.
-
-> **Nota:** Si la generación finaliza con un error de falta de memoria (OOM, *Out Of Memory*), se recomienda reducir el tamaño de lote o cambiar a un perfil más liviano como `one-shot` o `balanced`. El flag `--verbose` permite inspeccionar el consumo de memoria y la telemetría de cada iteración durante la ejecución.
-
-### 12.1 Tiempos de generación esperados
-
-La siguiente tabla resume los tiempos de generación orientativos para un prompt técnico de longitud media (≤ 200 tokens) en hardware representativo:
-
-| Perfil | CPU (sin GPU) | GPU 4 GB | GPU ≥ 8 GB |
-| :--- | :--- | :--- | :--- |
-| `one-shot` | 5–15 s | 2–5 s | 1–3 s |
-| `balanced` | 5–10 min | 1–3 min | 30–60 s |
-| `deep-search` | No recomendado | 10–30 min | 5–15 min |
-| `midillm-fast` | No soportado | 1–3 min | 30–90 s |
-
-Los valores anteriores son aproximados y dependen de la longitud del prompt, el número de instrumentos solicitados y la temperatura del muestreo.
-
-### 12.2 Verificación del entorno CUDA
-
-Antes de invocar perfiles que requieran GPU, se recomienda verificar que el runtime de CUDA sea detectable por PyTorch. El siguiente comando, ejecutado en un *shell* de Python dentro del entorno virtual, confirma la disponibilidad de la GPU:
-
-```bash
-uv run python -c "import torch; print(torch.cuda.is_available(), torch.cuda.get_device_name(0) if torch.cuda.is_available() else 'No GPU')"
-```
-
-Si la salida indica `No GPU`, se debe revisar la instalación de los drivers NVIDIA y de la versión de CUDA compatible con la build de PyTorch declarada en el `pyproject.toml`.
-
-### 12.3 Escalamiento incremental
-
-Se sugiere adoptar una estrategia de escalamiento incremental: iniciar la experimentación con `one-shot` para validar el prompt técnico, ascender a `balanced` para evaluar la calidad base, y reservar `deep-search` o `midillm-fast` para la generación definitiva. Esta progresión minimiza el tiempo total invertido en iteraciones fallidas y permite aislar la influencia del perfil en la calidad musical resultante.
-
-## 11. Configuración de FluidSynth {#11-fluidsynth}
+## 10. Configuración de FluidSynth {#10-fluidsynth}
 
 FluidSynth es un sintetizador de MIDI en tiempo real que el sistema utiliza como adaptador de salida para el renderizado de audio. Actúa como puente entre las secuencias simbólicas producidas por el modelo y la generación audible mediante *soundfonts* (colecciones de muestras instrumentales). Su instalación correcta se anticipó en 2.1 como requisito de sistema operativo y constituye el punto de fallo más frecuente en la fase de puesta en marcha.
 
 > ⚠️ **Advertencia:** La ausencia del binario `fluid-synth` o de su biblioteca nativa es la causa más habitual de fallo durante la primera ejecución. Ningún perfil de generación puede producir audio si esta dependencia no se encuentra correctamente instalada y accesible en el `PATH` del sistema.
 
-### 11.1 Instalación en macOS
+### 10.1 Instalación en macOS
 
 En sistemas macOS con Homebrew como gestor de paquetes, la instalación se reduce a una única instrucción:
 
@@ -280,7 +216,7 @@ En sistemas macOS con Homebrew como gestor de paquetes, la instalación se reduc
 brew install fluid-synth
 ```
 
-### 11.2 Instalación en Linux (Debian/Ubuntu)
+### 10.2 Instalación en Linux (Debian/Ubuntu)
 
 En distribuciones basadas en Debian, el paquete se encuentra disponible en los repositorios oficiales:
 
@@ -288,7 +224,7 @@ En distribuciones basadas en Debian, el paquete se encuentra disponible en los r
 sudo apt-get install fluidsynth
 ```
 
-### 11.3 Instalación en Linux (Fedora/RHEL)
+### 10.3 Instalación en Linux (Fedora/RHEL)
 
 En distribuciones de la familia Red Hat, el equivalente se obtiene mediante el gestor `dnf`:
 
@@ -296,7 +232,7 @@ En distribuciones de la familia Red Hat, el equivalente se obtiene mediante el g
 sudo dnf install fluidsynth
 ```
 
-### 11.4 Instalación en Windows
+### 10.4 Instalación en Windows
 
 La vía recomendada consiste en descargar el *release* oficial de FluidSynth desde su repositorio, extraer el contenido y agregar el subdirectorio `bin` a la variable de entorno `PATH` del sistema. Como alternativa avanzada, MSYS2 ofrece el paquete `mingw-w64-x86_64-fluidsynth` para usuarios familiarizados con dicho entorno.
 
@@ -306,24 +242,24 @@ La instalación puede verificarse en cualquier sistema operativo mediante la sig
 fluid-synth --version
 ```
 
-## 13. Troubleshooting {#13-troubleshooting}
+## 11. Troubleshooting {#11-troubleshooting}
 
 La siguiente tabla compendia los fallos observados con mayor frecuencia durante la operación del sistema. Cada fila asocia un síntoma reconocible a su causa probable y a la acción correctiva documentada en otra sección de este manual.
 
 | Síntoma | Causa probable | Solución |
 |---|---|---|
-| `ModuleNotFoundError: No module named 'pyfluidsynth'` | FluidSynth no instalado a nivel de sistema, o `uv sync` no ejecutado tras la clonación del repositorio. | Ejecutar `uv sync`; si el error persiste, instalar la biblioteca nativa de FluidSynth conforme a 11. |
-| `OSError: cannot open shared object file: libfluidsynth.so.3` (Linux) | Biblioteca nativa de FluidSynth ausente en las rutas de carga del enlazador dinámico. | Instalar el paquete `fluidsynth` mediante el gestor de paquetes del sistema operativo (11.2 o 11.3). |
+| `ModuleNotFoundError: No module named 'pyfluidsynth'` | FluidSynth no instalado a nivel de sistema, o `uv sync` no ejecutado tras la clonación del repositorio. | Ejecutar `uv sync`; si el error persiste, instalar la biblioteca nativa de FluidSynth conforme a 10. |
+| `OSError: cannot open shared object file: libfluidsynth.so.3` (Linux) | Biblioteca nativa de FluidSynth ausente en las rutas de carga del enlazador dinámico. | Instalar el paquete `fluidsynth` mediante el gestor de paquetes del sistema operativo (10.2 o 10.3). |
 | `KeyError: 'GOOGLE_API_KEY'` o error de la API de Gemini | Variable de entorno ausente o inválida en el archivo `.env`. | Editar el archivo `.env` y proporcionar una clave válida, o invocar el CLI en modo *pass-through* omitiendo la bandera `--translator-model` (7). |
-| `torch.cuda.OutOfMemoryError` con `midillm-fast` o `deep-search` | Memoria de vídeo (VRAM) insuficiente para alojar los tensores del modelo seleccionado. | Cambiar al perfil `balanced` o `one-shot` según la guía de 12, o liberar memoria cerrando otros procesos que consuman GPU. |
-| `FileNotFoundError: models/text2midi/...` | Pesos del modelo no descargados en el directorio `models/` del repositorio. | Revisar 10 y descargar los *checkpoints* (puntos de control del modelo) desde Hugging Face hacia el directorio `models/`. |
+| `torch.cuda.OutOfMemoryError` con `midillm-fast` o `deep-search` | Memoria de vídeo (VRAM) insuficiente para alojar los tensores del modelo seleccionado. | Cambiar al perfil `balanced` o `one-shot`, o liberar memoria cerrando otros procesos que consuman GPU. |
+| `FileNotFoundError: models/text2midi/...` | Pesos del modelo no descargados en el directorio `models/` del repositorio. | Revisar 10 y descargar los *checkpoints* desde Hugging Face hacia el directorio `models/`. |
 | La generación se prolonga durante horas sin progresar visiblemente | Perfil `deep-search` con un `beam_width` excesivamente alto sobre hardware limitado. | Reducir el `beam_width` mediante los parámetros del perfil o sustituir el perfil por `balanced` (8). |
 | El MIDI resultante suena fuera de tonalidad o con disonancias severas | Heurísticas musicales del evaluador penalizando combinaciones legítimas. | Revisar el *prompt* técnico con `--print-prompt` (9) y activar `--strict-instruments` para forzar el cumplimiento estricto de los instrumentos solicitados. |
 | `python: command not found` al invocar el comando canónico | Python 3.12 no instalado o no presente en el `PATH` del sistema. | Instalar Python 3.12 desde el sitio oficial `python.org` y verificar la disponibilidad con `python --version`. |
 
 Para errores no contemplados en la tabla precedente, se recomienda consultar la referencia exhaustiva de banderas en `docs/cli_reference.md` y reproducir la ejecución con la bandera `--verbose` para obtener trazas a nivel `DEBUG` que faciliten el diagnóstico.
 
-## 14. Recursos Adicionales {#14-recursos}
+## 12. Recursos Adicionales {#14-recursos}
 
 Los cuadernos de análisis y experimentación están disponibles en el directorio `notebooks/` y pueden ejecutarse en Google Colab mediante las insignias dispuestas en el `README.md` del repositorio.
 

@@ -1,6 +1,6 @@
 # Manual de Usuario — text2midi
 
-- [1. Introducción](#1-introduccion)
+- [1. Introducción](#1. Introducción)
 - [2. Requisitos](#2-requisitos)
     - [2.1 Software](#2-1-software)
     - [2.2 Hardware](#2-2-hardware)
@@ -22,7 +22,7 @@
 - [13. Troubleshooting](#13-troubleshooting)
 - [14. Recursos Adicionales](#14-recursos)
 
-## 1. Introducción {#1-introduccion}
+## 1. Introducción
 
 El sistema text2midi es una herramienta de interfaz de línea de comandos diseñada para la síntesis de música simbólica en formato MIDI a partir de descripciones textuales. Su propósito es resolver la brecha entre la conceptualización lingüística de una obra y su representación técnica, permitiendo que la intención musical se traduzca en datos estructurados sin requerir conocimientos profundos de programación.
 
@@ -41,13 +41,13 @@ La herramienta está orientada a tres perfiles de usuario: músicos que buscan p
 ### 2.2 Hardware {#2-2-hardware}
 | Recurso | Mínimo (Evaluación/CPU) | Recomendado (MidiLLM/GPU) |
 |---|---|---|
-| GPU | No requerida | NVIDIA con $\ge 4$ GB VRAM |
+| GPU | No requerida | NVIDIA con  >4 GB VRAM |
 | CPU | Quad-Core 2.5 GHz | Octa-Core 3.0 GHz+ |
 | RAM | 8 GB | 16 GB |
 | Disco | 5 GB libres | 10 GB libres (para pesos de modelos) |
 
 ### 2.3 Cuenta de Google AI Studio {#2-3-cuenta-google}
-El uso de una `GOOGLE_API_KEY` es opcional. Solo es necesaria cuando se utiliza un modelo de traducción (ej. `gemini-2.5-flash`) para convertir lenguaje natural en prompts técnicos. En el modo *pass-through* (paso directo), el sistema no requiere conectividad externa.
+El uso de una `GOOGLE_API_KEY` es opcional. Solo es necesaria cuando se utiliza un modelo de traducción (ej. `gemma-4-31b`) para convertir lenguaje natural en prompts técnicos. En el modo *pass-through* (paso directo), el sistema no requiere conectividad externa.
 
 > ⚠️ **Advertencia:** La ausencia de FluidSynth en el `PATH` del sistema es la causa más común de errores durante la ejecución de la síntesis.
 
@@ -56,7 +56,7 @@ El uso de una `GOOGLE_API_KEY` es opcional. Solo es necesaria cuando se utiliza 
 ### 3.1 Clonar el repositorio {#3-1-clonar}
 Se debe obtener una copia local del código fuente mediante el comando `git clone`:
 ```bash
-git clone https://github.com/anomalyco/text2midi.git
+git clone https://github.com/colrudev/text2midi.git
 cd text2midi
 ```
 

@@ -1,6 +1,6 @@
 # Manual de Usuario — text2midi
 
-- [1. Introducción](#1. Introducción)
+- [1. Introducción](#1-introducción)
 - [2. Requisitos](#2-requisitos)
     - [2.1 Software](#2-1-software)
     - [2.2 Hardware](#2-2-hardware)
@@ -20,7 +20,7 @@
 - [11. Troubleshooting](#11-troubleshooting)
 - [12. Recursos Adicionales](#12-recursos)
 
-## 1. Introducción
+## <a id="1"></a>1. Introducción
 
 El sistema text2midi es una herramienta de interfaz de línea de comandos diseñada para la síntesis de música simbólica en formato MIDI a partir de descripciones textuales. Su propósito es resolver la brecha entre la conceptualización lingüística de una obra y su representación técnica, permitiendo que la intención musical se traduzca en datos estructurados sin requerir conocimientos profundos de programación.
 

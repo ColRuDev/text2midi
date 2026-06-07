@@ -60,3 +60,27 @@ Resulta importante determinar que modelos son adecuados para esta estrategia de 
 - [Composición de Text2Midi con formato midicaps](../outputs/evaluación-intencion/text2midi_midicaps_format.mid)
 - [Composición de MidiLLM base](./outputs/evaluación-intencion/midillm_base.mid)
 - [Composición de MidiLLM con formato midicaps](../outputs/evaluación-intencion/midillm_midicaps_format.mid)
+
+---
+
+# Evaluación de los resultados usando una estructura musical completa
+
+Después de las reuniones con una compositora profesional, se construyo la guia para convertir la intención abstracta en una descripción teórica más precisa, la cual se puede usar como entrada para el modelo de generación musical.
+
+## Prompt generado
+
+A reflective cinematic ambient track with a magical and nostalgic vibe, featuring a solitary mellow piano, a deep string ensemble, and shimmering celesta and glockenspiel representing the glints of starlight. The composition is in the key of D minor with a 4/4 time signature and a slow Adagio tempo. The 8-measure structure follows a narrative arc beginning with a melancholic Dm - Bb - Gm - A, which serves as a question, before transitioning into a bright Bb - F - C - D Major sequence that provides a sense of total closure and transforms the serene melancholy into a feeling of pure optimism and the magic of the impossible.
+
+## Resultados
+
+- Los midi generados por MidiLLM con este prompt estructurado, se destacan muy por encima de los generados por Text2Midi.
+- Aqui destaca una gran coherencia musical, reflejando tempos adecuados, progresión armonica coherente y una atmosfera mejor trabajada.
+- El acompañamiento en todos los casos aportaba de diferentes formas y estilos, lo que añadió una dimensión creativa y única a la composición.
+- La melodia en algunos casos no sonaba adecuado a la intención original o se sentia fuera de tiempo, sin embargo, esto es algo que se puede ajustar en postgeneración.
+- Persiste la tendencia a notas cortas cuanto hacer arpegios largos resulta en una composición más fluida y natural.
+
+## Referencias
+
+- [generación 1](../outputs/evaluación-estructura/gen-1-gemma.mid)
+- [generación 2](../outputs/evaluación-estructura/gen-2-gemma.mid)
+- [generación 3](../outputs/evaluación-estructura/gen-3-gemma.mid)

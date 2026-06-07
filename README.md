@@ -173,3 +173,35 @@ mkdir -p models/
 - **Pre-trained Model**: [text2midi on HuggingFace](https://huggingface.co/amaai-lab/text2midi)
 - **SymphonyNet Dataset**: [https://symphonynet.github.io/](https://symphonynet.github.io/)
 - **MidiCaps Dataset**: [https://huggingface.co/datasets/amaai-lab/MidiCaps](https://huggingface.co/datasets/amaai-lab/MidiCaps)
+
+## Citation
+
+If you use this project or our research in your work, please cite the underlying models and papers:
+
+### Text2Midi
+```bibtex
+@inproceedings{bhandari2025text2midi,
+    title={text2midi: Generating Symbolic Music from Captions}, 
+    author={Keshav Bhandari and Abhinaba Roy and Kyra Wang and Geeta Puri and Simon Colton and Dorien Herremans},
+    booktitle={Proceedings of the 39th AAAI Conference on Artificial Intelligence (AAAI 2025)},
+    year={2025}
+}
+```
+
+### MIDI-LLM (Fine-tuning base)
+```bibtex
+@inproceedings{wu2025midillm,
+  title={{MIDI-LLM}: Adapting large language models for text-to-{MIDI} music generation},
+  author={Wu, Shih-Lun and Kim, Yoon and Huang, Cheng-Zhi Anna},
+  booktitle={Proc. NeurIPS AI4Music Workshop},
+  year={2025}
+}
+@misc{llama3researchcloud,
+  title={The Llama 3 Herd of Models},
+  author={Meta Llama Team},
+  year={2024},
+  eprint={2407.21783},
+  archivePrefix={arXiv},
+  primaryClass={cs.LG}
+}
+```
